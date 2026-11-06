@@ -12,7 +12,7 @@ EarBridge is a free web app for people who are deaf in one ear. It listens throu
 
 No install needed. It runs in your phone browser.
 
-1. Open the live page: `(https://abhishek6966.github.io/EarBridge/)` (replace with your own GitHub Pages link).
+1. Open the live page: `(https://abhishek6966.github.io/EarBridge/)`
 2. Tap **Share, then Add to Home Screen** to keep it like an app.
 3. Pair your earbuds, then open EarBridge.
 4. Pick your **deaf ear**, tick the earbuds box, tap **Start listening**.
