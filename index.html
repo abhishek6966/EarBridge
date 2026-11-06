@@ -5,117 +5,214 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <title>EarBridge</title>
+<meta name="theme-color" content="#0c2229" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#dde9e8" media="(prefers-color-scheme: light)">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Nunito:wght@500;700;900&display=swap">
 <style>
-  :root { color-scheme: light dark; --bg:#fff; --fg:#111; --mut:#666; --card:#f1f1f4; --acc:#0a63ff; --stop:#d92d20; }
-  @media (prefers-color-scheme: dark) { :root { --bg:#111; --fg:#f2f2f2; --mut:#999; --card:#1d1d22; } }
+  :root { color-scheme: light dark;
+    --bg:#dde9e8; --panel:#f3f8f7; --chip:#e6f0ef; --ink:#0c2b33; --mut:#4d666b; --line:rgba(12,43,51,.15);
+    --teal:#0b7a82; --teal-ink:#fff; --track:#b4c9c9; --hatch:rgba(12,43,51,.3); --glow:rgba(11,122,130,.16); --disc:rgba(11,122,130,.28);
+    --stop:#b42318; --on-stop:#fff; --amber:#e8920c; }
+  @media (prefers-color-scheme: dark) { :root {
+    --bg:#0c2229; --panel:#133039; --chip:#1a3c46; --ink:#e4f2f0; --mut:#9db8b8; --line:rgba(228,242,240,.16);
+    --teal:#46cfc3; --teal-ink:#052a2d; --track:#2c4d57; --hatch:rgba(228,242,240,.32); --glow:rgba(70,207,195,.16); --disc:rgba(70,207,195,.3);
+    --stop:#ff7a6b; --on-stop:#2b0a06; --amber:#f5b14a; } }
   * { box-sizing: border-box; }
-  body { margin:0; padding: max(20px, env(safe-area-inset-top)) 20px max(20px, env(safe-area-inset-bottom));
-         font: 16px/1.4 -apple-system, system-ui, sans-serif; background: var(--bg); color: var(--fg); }
-  main { max-width: 480px; margin: 0 auto; display: grid; gap: 18px; }
-  h1 { margin: 8px 0 0; font-size: 32px; }
-  .mut { color: var(--mut); font-size: 14px; }
-  .seg { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-  button { font: inherit; }
-  .seg button { padding: 14px; border-radius: 12px; border: 2px solid transparent; background: var(--card); color: var(--fg); font-size: 17px; }
-  .seg button.on { border-color: var(--acc); font-weight: 600; }
-  #go { padding: 20px; border: 0; border-radius: 16px; background: var(--acc); color: #fff; font-size: 20px; font-weight: 700; }
-  #go.run { background: var(--stop); }
-  #go.tap { background: #f59e0b; }
-  .small { padding: 12px; border-radius: 10px; border: 0; background: var(--card); color: var(--fg); }
-  .bar { height: 10px; background: var(--card); border-radius: 6px; overflow: hidden; }
-  #lvl { height: 100%; width: 0; background: #22c55e; }
-  input[type=range] { width: 100%; }
-  label.row { display: flex; gap: 10px; align-items: center; }
-  select { width: 100%; padding: 10px; border-radius: 10px; font-size: 16px; }
-  .card { background: var(--card); padding: 14px; border-radius: 12px; }
-  #err { color: var(--stop); font-size: 14px; }
-  #stat { color: #b45309; font-size: 14px; min-height: 20px; }
-  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-  #flash { position: fixed; inset: 0; pointer-events: none; opacity: 0; transition: opacity .5s;
-           display: flex; align-items: center; justify-content: center; font-size: 22px; font-weight: 700; color: #fff; text-align: center; padding: 30px; }
-  #flash.l { background: linear-gradient(90deg, rgba(10,99,255,.85), rgba(10,99,255,0) 70%); justify-content: flex-start; }
-  #flash.r { background: linear-gradient(270deg, rgba(10,99,255,.85), rgba(10,99,255,0) 70%); justify-content: flex-end; }
-  #flash.show { opacity: 1; transition: none; }
-  .hidden { position: absolute; opacity: 0; pointer-events: none; width: 1px; height: 1px; }
+  html { -webkit-text-size-adjust: 100%; }
+  body { margin:0; min-height:100dvh; background:var(--bg); color:var(--ink);
+    font: 500 16px/1.45 Nunito, ui-rounded, "SF Pro Rounded", system-ui, sans-serif;
+    padding: max(18px, env(safe-area-inset-top)) max(18px, env(safe-area-inset-right)) max(28px, env(safe-area-inset-bottom)) max(18px, env(safe-area-inset-left)); }
+  button, select, input { font: inherit; color: inherit; }
+  :focus-visible { outline: 3px solid var(--amber); outline-offset: 3px; }
+  .wrap { max-width: 1060px; margin: 0 auto; display: grid; gap: 22px; }
+  .top { display:flex; align-items:center; gap:14px; min-width:0; }
+  .logo { width:46px; height:auto; flex:none; color:var(--ink); }
+  h1 { margin:0; font-size:clamp(30px,8vw,44px); line-height:1; font-weight:900; letter-spacing:-.03em; }
+  .tag { margin:4px 0 0; color:var(--mut); font-size:15px; }
+  .pill { margin-left:auto; flex:none; padding:7px 14px; border-radius:99px; background:var(--chip); font-weight:700; font-size:14px; border:2px solid var(--line); }
+  body[data-state=run] .pill { background:var(--teal); color:var(--teal-ink); border-color:transparent; }
+  body[data-state=tap] .pill { background:var(--amber); color:#2a1800; border-color:transparent; }
+
+  .stage { display:grid; grid-template-columns:1fr 1fr; gap:12px; width:100%; max-width:400px; margin:0 auto; }
+  .stage > * { min-width:0; }
+  .dial { order:1; grid-column:1/-1; justify-self:center; position:relative; width:min(100%,360px); aspect-ratio:1; border-radius:50%;
+    background:var(--panel) repeating-radial-gradient(circle closest-side, transparent 0 22%, var(--line) 22% 22.7%);
+    box-shadow:0 0 0 2px var(--line); }
+  .half { position:absolute; inset:0; border-radius:50%; pointer-events:none; background:var(--glow); }
+  .half.L { clip-path:inset(0 50% 0 0); } .half.R { clip-path:inset(0 0 0 50%); }
+  .half::before { content:""; position:absolute; inset:0; opacity:0; background:repeating-linear-gradient(135deg, var(--hatch) 0 2px, transparent 2px 9px); }
+  #bl.on ~ .dial .half.L, #br.on ~ .dial .half.R { background:none; }
+  #bl.on ~ .dial .half.L::before, #br.on ~ .dial .half.R::before { opacity:1; }
+  body[data-state=run] .half::after { content:""; position:absolute; inset:30%; border-radius:50%; border:2px solid var(--teal); animation:rip 3.2s ease-out infinite; }
+  #bl.on ~ .dial .half.L::after, #br.on ~ .dial .half.R::after { display:none; }
+  @keyframes rip { from { transform:scale(1); opacity:.55; } to { transform:scale(2.3); opacity:0; } }
+  .bar { position:absolute; inset:0; border-radius:50%; overflow:hidden; pointer-events:none; }
+  #lvl { position:absolute; left:50%; top:50%; width:0; height:auto; aspect-ratio:1; border-radius:50%; transform:translate(-50%,-50%); background:var(--disc); transition:width .09s linear; }
+  .side { position:absolute; top:50%; transform:translateY(-50%); width:28%; text-align:center; font-size:clamp(11px,3.3vw,14px); line-height:1.25; display:grid; }
+  .sL { left:1%; } .sR { right:1%; }
+  .side b { font-weight:900; font-size:1.15em; }
+  .side .t { color:var(--mut); }
+  .sL .t::before, .sR .t::before { content:"hears"; }
+  #bl.on ~ .dial .sL .t::before, #br.on ~ .dial .sR .t::before { content:"can't hear"; }
+  #ring { position:absolute; inset:2.5%; border-radius:50%; border:2px dashed var(--teal); opacity:.3; z-index:2; pointer-events:none; transition:opacity .3s; }
+  #arrow { position:absolute; inset:0; transition:transform .15s; }
+  #arrow svg { position:absolute; left:50%; top:-17px; width:32px; height:32px; margin-left:-16px; fill:var(--teal); }
+  #go { position:absolute; left:50%; top:50%; z-index:3; width:40%; aspect-ratio:1; transform:translate(-50%,-50%); border:0; border-radius:50%;
+    background:var(--teal); color:var(--teal-ink); font-weight:900; font-size:clamp(15px,4.6vw,20px); line-height:1.15; padding:8%;
+    box-shadow:0 8px 22px rgba(0,0,0,.22), inset 0 0 0 6px rgba(255,255,255,.14); transition:background .2s; cursor:pointer; }
+  #go:active { transform:translate(-50%,-50%) scale(.97); }
+  #go.run { background:var(--stop); color:var(--on-stop); }
+  #go.tap { background:var(--amber); color:#2a1800; }
+
+  .ask { order:2; grid-column:1/-1; margin:6px 0 -2px; text-align:center; font-weight:800; font-size:17px; }
+  .ear { min-height:54px; border-radius:18px; border:2px solid var(--line); background:var(--chip); font-weight:800; font-size:17px; cursor:pointer; }
+  .ear.on { border-color:var(--teal); background:var(--glow); box-shadow:inset 0 0 0 1px var(--teal); }
+  #bl { order:3; } #br { order:4; }
+  #side { order:5; grid-column:1/-1; margin:0; text-align:center; color:var(--mut); font-size:14.5px; }
+  .gate { order:6; grid-column:1/-1; padding:12px 14px; border-radius:18px; background:var(--chip); border:2px solid var(--line); }
+  #stat { order:7; grid-column:1/-1; color:var(--ink); background:var(--glow); border-radius:14px; padding:10px 14px; font-size:14.5px; }
+  #err { order:8; grid-column:1/-1; color:var(--stop); font-weight:700; font-size:14.5px; }
+  #force { order:9; grid-column:1/-1; }
+  [hidden] { display:none !important; }
+  #stat:empty, #err:empty { display:none; }
+
+  .console { background:var(--panel); border-radius:30px; padding:6px clamp(16px,4vw,30px); box-shadow:0 0 0 2px var(--line); min-width:0; }
+  .grp { padding:18px 0; border-top:2px solid var(--line); }
+  .grp:first-child { border-top:0; }
+  .head { display:flex; justify-content:space-between; align-items:baseline; gap:12px; }
+  .head label, .grp h2 { margin:0; font-size:19px; font-weight:900; }
+  .val { font-size:30px; font-weight:900; font-variant-numeric:tabular-nums; letter-spacing:-.02em; white-space:nowrap; }
+  .val small { font-size:15px; font-weight:700; color:var(--mut); }
+  .hint { margin:4px 0 8px; color:var(--mut); font-size:14.5px; max-width:62ch; }
+  input[type=range] { -webkit-appearance:none; appearance:none; width:100%; height:44px; margin:2px 0; background:transparent; --p:50%; }
+  input[type=range]::-webkit-slider-runnable-track { height:12px; border-radius:99px; background:linear-gradient(90deg, var(--teal) var(--p), var(--track) var(--p)); }
+  input[type=range]::-webkit-slider-thumb { -webkit-appearance:none; width:34px; height:34px; margin-top:-11px; border-radius:50%; background:var(--panel); border:6px solid var(--teal); box-shadow:0 2px 8px rgba(0,0,0,.3); }
+  input[type=range]::-moz-range-track { height:12px; border-radius:99px; background:var(--track); }
+  input[type=range]::-moz-range-progress { height:12px; border-radius:99px; background:var(--teal); }
+  input[type=range]::-moz-range-thumb { width:22px; height:22px; border-radius:50%; background:var(--panel); border:6px solid var(--teal); }
+  .tog { display:flex; gap:14px; align-items:center; min-height:48px; cursor:pointer; line-height:1.3; }
+  .sw { -webkit-appearance:none; appearance:none; flex:none; width:52px; height:32px; margin:0; border-radius:99px; background:var(--track); position:relative; transition:background .2s; cursor:pointer; }
+  .sw::after { content:""; position:absolute; left:4px; top:4px; width:24px; height:24px; border-radius:50%; background:#fff; box-shadow:0 1px 4px rgba(0,0,0,.35); transition:transform .2s; }
+  .sw:checked { background:var(--teal); } .sw:checked::after { transform:translateX(20px); }
+  .btn { width:100%; min-height:52px; padding:12px 16px; border-radius:16px; border:2px solid var(--line); background:var(--chip); font-weight:800; font-size:16px; cursor:pointer; }
+  .btn:active { background:var(--glow); }
+  .two { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  select { width:100%; min-height:50px; padding:10px 12px; border-radius:14px; border:2px solid var(--line); background:var(--chip); }
+  details.grp > summary { list-style:none; display:flex; justify-content:space-between; align-items:center; gap:12px; min-height:48px; font-size:19px; font-weight:900; cursor:pointer; }
+  details.grp > summary::-webkit-details-marker { display:none; }
+  details.grp > summary::after { content:""; flex:none; width:10px; height:10px; border-right:3px solid currentColor; border-bottom:3px solid currentColor; transform:rotate(45deg); transition:transform .2s; margin:0 4px 4px 0; }
+  details.grp[open] > summary::after { transform:rotate(-135deg); margin:4px 4px 0 0; }
+  .in { display:grid; gap:10px; padding-top:6px; }
+  .in p { margin:0; }
+  #dstat { color:var(--mut); font-size:14.5px; }
+  .hidden { position:absolute; opacity:0; pointer-events:none; width:1px; height:1px; }
+  #flash { position:fixed; inset:0; z-index:50; pointer-events:none; opacity:0; transition:opacity .5s; display:flex; align-items:center; justify-content:center; font-size:22px; font-weight:900; color:#fff; text-align:center; padding:30px; }
+  #flash.l { background:linear-gradient(90deg, rgba(10,99,255,.88), rgba(10,99,255,0) 70%); justify-content:flex-start; }
+  #flash.r { background:linear-gradient(270deg, rgba(10,99,255,.88), rgba(10,99,255,0) 70%); justify-content:flex-end; }
+  #flash.show { opacity:1; transition:none; }
+
+  @media (min-width:760px) {
+    body { padding-top:max(28px, env(safe-area-inset-top)); }
+    .wrap { grid-template-columns:minmax(320px,400px) minmax(0,1fr); column-gap:clamp(28px,5vw,56px); align-items:start; }
+    .top { grid-column:1/-1; }
+    .stage { position:sticky; top:24px; margin:0; }
+    .console { padding-top:12px; padding-bottom:12px; }
+  }
+  @media (max-height:520px) and (orientation:landscape) { .dial { width:min(100%,64dvh); } .stage { position:static; } }
+  @media (max-width:340px) { .logo { width:36px; } .pill { padding:6px 10px; } .val { font-size:26px; } }
+  @media (prefers-reduced-motion: reduce) { * { animation:none !important; transition:none !important; } }
 </style>
 </head>
 <body>
-<div id="flash"></div>
+<div id="flash" aria-live="assertive"></div>
 <label class="hidden"><input type="checkbox" switch id="hs"></label>
-<main>
-  <h1>EarBridge</h1>
-  <div class="mut">Hear your surroundings in your good ear.</div>
+<div class="wrap">
+  <header class="top">
+    <svg class="logo" viewBox="0 0 46 30" aria-hidden="true"><path d="M6 25C9 5 37 5 40 25" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round"/><circle cx="6" cy="25" r="4" fill="none" stroke="currentColor" stroke-width="2.6"/><circle cx="40" cy="25" r="4" fill="currentColor"/></svg>
+    <div><h1>EarBridge</h1><p class="tag">Hear your surroundings in your good ear.</p></div>
+    <span class="pill" id="pill">Idle</span>
+  </header>
 
-  <section>
-    <b>Which ear can't hear?</b>
-    <div class="seg" style="margin-top:8px">
-      <button id="bl" class="on">Left</button>
-      <button id="br">Right</button>
+  <section class="stage" aria-label="Listening">
+    <button id="bl" class="ear on" type="button">Left ear</button>
+    <button id="br" class="ear" type="button">Right ear</button>
+    <div class="dial">
+      <div class="half L"></div><div class="half R"></div>
+      <div class="bar"><div id="lvl"></div></div>
+      <div class="side sL"><b>Left</b><span class="t"></span></div>
+      <div class="side sR"><b>Right</b><span class="t"></span></div>
+      <div id="ring" aria-hidden="true"><div id="arrow"><svg viewBox="0 0 24 24"><path d="M12 2l9 19-9-5-9 5z"/></svg></div></div>
+      <button id="go" type="button">Start listening</button>
     </div>
-    <div class="mut" id="side" style="margin-top:6px"></div>
+    <p class="ask">Which ear can't hear?</p>
+    <p id="side"></p>
+    <label class="tog gate"><input type="checkbox" id="hp" class="sw"><span>I am wearing earbuds or headphones. This avoids loud feedback.</span></label>
+    <div id="stat" role="status" aria-live="polite"></div>
+    <div id="err" role="alert"></div>
+    <button class="btn" id="force" type="button" hidden>My earbuds are connected. Start anyway</button>
   </section>
 
-  <label class="row card"><input type="checkbox" id="hp"> I am wearing earbuds or headphones (needed to avoid loud feedback)</label>
-
-  <button id="go">Start listening</button>
-  <div class="bar"><div id="lvl"></div></div>
-  <div id="stat"></div>
-  <div id="err"></div>
-
-  <section>
-    <b>Volume boost: +<span id="gv">12</span> dB</b>
-    <input type="range" id="gain" min="0" max="24" step="1" value="12">
-    <div class="mut">Above +18 dB adds hiss. Moving the phone closer to the speaker sounds better than a huge boost.</div>
-    <label class="row" style="margin-top:8px"><input type="checkbox" id="voice" checked> Voice focus (clearer speech)</label>
-  </section>
-
-  <section class="card">
-    <b>Noise cleanup: <span id="nv">6</span> / 10</b>
-    <input type="range" id="nr" min="0" max="10" step="1" value="6">
-    <div class="mut">Learns the steady background noise (fans, traffic, hiss) and removes it from the sound, even while people talk. Higher is stronger. Too high can make voices sound thin. 0 turns it off.</div>
-    <label class="row" style="margin-top:8px"><input type="checkbox" id="sys"> Also try the phone's own noise filter (restart to apply, may lower quality)</label>
-  </section>
-
-  <section class="card">
-    <b>Find the voice (works on any phone)</b>
-    <div class="mut">Hold the phone upright at your chest and turn slowly in a full circle while the person talks. Your body blocks a little sound from behind, so the app finds the loudest direction. Then the arrow points to the voice and you hear two quick ticks when you face it.</div>
-    <div id="ring" style="margin:14px auto;width:130px;height:130px;border-radius:50%;border:3px solid var(--acc);display:flex;align-items:center;justify-content:center;opacity:.3">
-      <div id="arrow" style="font-size:54px;line-height:1;transition:transform .15s">&#9650;</div>
+  <section class="console">
+    <div class="grp">
+      <div class="head"><label for="gain">Volume boost</label><output class="val">+<span id="gv">12</span> dB</output></div>
+      <input type="range" id="gain" min="0" max="24" step="1" value="12">
+      <p class="hint">Above +18 dB adds hiss. Moving the phone closer to the speaker sounds better than a huge boost.</p>
+      <label class="tog"><input type="checkbox" id="voice" class="sw" checked><span>Voice focus (clearer speech)</span></label>
     </div>
-    <button class="small" id="find" style="width:100%">Find the voice</button>
-    <div class="mut" id="fstat" style="margin-top:8px"></div>
-  </section>
 
-  <section class="card">
-    <b>Deaf-side alert (experimental)</b>
-    <label class="row" style="margin-top:6px"><input type="checkbox" id="dir"> Alert me when a new sound starts on my deaf side</label>
-    <label class="row"><input type="checkbox" id="tick" checked> Soft tick in my good ear</label>
-    <div class="two" style="margin-top:10px">
-      <button class="small" id="cal">Calibrate</button>
-      <button class="small" id="test">Test alert</button>
+    <div class="grp">
+      <div class="head"><label for="nr">Noise cleanup</label><output class="val"><span id="nv">5</span><small> / 10</small></output></div>
+      <input type="range" id="nr" min="0" max="10" step="1" value="5">
+      <p class="hint">Learns steady background noise (fans, traffic, hiss) and turns it down, even while people talk. Too high can make voices sound thin. 0 turns it off.</p>
     </div>
-    <div class="mut" id="dstat" style="margin-top:8px">Start listening, then tap Calibrate and clap or talk on your deaf side.</div>
+
+    <div class="grp">
+      <h2>Find the voice</h2>
+      <p class="hint">Hold the phone upright at your chest and turn slowly in a full circle while the person talks. The arrow on the dial then points to the voice, and you hear two quick ticks when you face it.</p>
+      <button class="btn" id="find" type="button">Find the voice</button>
+      <p class="hint" id="fstat"></p>
+    </div>
+
+    <details class="grp">
+      <summary>Deaf-side alert (experimental)</summary>
+      <div class="in">
+        <label class="tog"><input type="checkbox" id="dir" class="sw"><span>Alert me when a new sound starts on my deaf side</span></label>
+        <label class="tog"><input type="checkbox" id="tick" class="sw" checked><span>Soft tick in my good ear</span></label>
+        <div class="two"><button class="btn" id="cal" type="button">Calibrate</button><button class="btn" id="test" type="button">Test alert</button></div>
+        <p id="dstat">Start listening, then tap Calibrate and clap or talk on your deaf side.</p>
+      </div>
+    </details>
+
+    <details class="grp">
+      <summary>Microphone and filter</summary>
+      <div class="in">
+        <select id="mic" aria-label="Microphone"><option value="">Default (start once to list)</option></select>
+        <p class="hint">Pick the iPhone microphone, not your earbuds. Earbud mics make sound worse.</p>
+        <label class="tog"><input type="checkbox" id="sys" class="sw"><span>Also try the phone's own noise filter (restart to apply, may lower quality)</span></label>
+      </div>
+    </details>
+
+    <details class="grp">
+      <summary>Good to know</summary>
+      <div class="in">
+        <p class="hint">Keep this screen open while listening and point the phone mic toward the people you want to hear.</p>
+        <p class="hint">If a call or alert interrupts, EarBridge resumes by itself. If it cannot, tap the orange button.</p>
+        <p class="hint">For music, calls and videos: Settings &gt; Accessibility &gt; Audio &amp; Visual, turn on Mono Audio and slide Balance to your good ear.</p>
+        <p class="hint">Start with low volume and raise it slowly. Your settings are remembered.</p>
+      </div>
+    </details>
   </section>
+</div>
 
-  <section>
-    <b>Microphone</b>
-    <select id="mic"><option value="">Default (start once to list)</option></select>
-    <div class="mut">Pick the iPhone microphone, not your earbuds. Earbud mics make sound worse.</div>
-  </section>
-
-  <div class="card mut">
-    Keep this screen open while listening. Put the phone mic toward the people you want to hear.
-    If a call or alert interrupts, EarBridge resumes by itself. If it cannot, tap the orange button.
-    For music, calls and videos: Settings > Accessibility > Audio &amp; Visual, turn on Mono Audio and slide Balance to your good ear.
-    Start with low volume and raise it slowly.
-  </div>
-</main>
-
-<script type="text/plain" id="nr-src">// EarBridge noise suppressor: spectral subtraction with per-bin noise tracking.
+<script type="text/plain" id="nr-src">// EarBridge noise suppressor.
+// Minimum-statistics noise tracking + decision-directed Wiener gain.
+// This avoids "musical noise" (random chirps that come and go) that plain spectral subtraction makes.
 class NRCore {
   constructor(sr) {
-    const N = 512, H = 256, K = N / 2;
-    this.N = N; this.H = H; this.K = K; this.sr = sr; this.strength = 6;
+    const N = 512, H = 256, K = N / 2, D = 12, U = 16;
+    this.N = N; this.H = H; this.K = K; this.D = D; this.U = U; this.sr = sr; this.strength = 5;
     this.win = new Float32Array(N);
     for (let i = 0; i < N; i++) this.win[i] = Math.sqrt(0.5 * (1 - Math.cos(2 * Math.PI * i / N)));
     this.cosT = new Float32Array(K); this.sinT = new Float32Array(K);
@@ -127,9 +224,16 @@ class NRCore {
     this.inBuf = new Float32Array(N); this.inFill = 0;
     this.acc = new Float32Array(N);
     this.q = new Float32Array(4096); this.qh = 0; this.qt = 0;
-    this.P = new Float32Array(K + 1); this.Ps = new Float32Array(K + 1); this.noise = new Float32Array(K + 1);
-    this.G = new Float32Array(K + 1).fill(1); this.gs = new Float32Array(K + 1).fill(1);
-    this.frames = 0;
+    const B = K + 1;
+    this.P = new Float32Array(B);          // instant power
+    this.Sm = new Float32Array(B);         // smoothed power
+    this.cur = new Float32Array(B);        // minimum of the current sub-window
+    this.ring = new Float32Array(D * B).fill(1e30); // minima of recent sub-windows
+    this.ringMin = new Float32Array(B).fill(1e30);
+    this.noise = new Float32Array(B).fill(1e-10);
+    this.prevClean = new Float32Array(B);  // clean-speech power estimate of the previous frame
+    this.G = new Float32Array(B).fill(1); this.gs = new Float32Array(B).fill(1);
+    this.sub = 0; this.subCount = 0; this.frames = 0;
   }
   fft(inverse) {
     const { N, re, im, rev, cosT, sinT } = this;
@@ -148,43 +252,61 @@ class NRCore {
     if (inverse) for (let i = 0; i < N; i++) { re[i] /= N; im[i] /= N; }
   }
   frame() {
-    const { N, H, K, re, im, win, P, noise, G, gs } = this;
+    const { N, H, K, D, U, re, im, win, P, Sm, cur, ring, ringMin, noise, G, gs, prevClean } = this;
+    const B = K + 1;
     for (let i = 0; i < N; i++) { re[i] = this.inBuf[i] * win[i]; im[i] = 0; }
     this.fft(false);
-    let tot = 0, noiseTot = 0;
-    const Ps = this.Ps;
+
+    // 1. power, smoothing, minimum tracking
+    const first = this.frames === 0;
     for (let k = 0; k <= K; k++) {
-      P[k] = re[k] * re[k] + im[k] * im[k];
-      Ps[k] = this.frames === 0 ? P[k] : 0.8 * Ps[k] + 0.2 * P[k];
-      tot += Ps[k]; noiseTot += noise[k];
+      const p = re[k] * re[k] + im[k] * im[k];
+      P[k] = p;
+      Sm[k] = first ? p : 0.9 * Sm[k] + 0.1 * p;
+      if (first || Sm[k] < cur[k]) cur[k] = Sm[k];
     }
-    const hopSec = H / this.sr;
-    const speechLike = this.frames > 15 && tot > 4 * noiseTot;
-    const rise = Math.pow(10, (speechLike ? 0.3 : 2.0) * hopSec / 10);
+    if (++this.subCount >= U) {
+      this.subCount = 0;
+      const off = this.sub * B;
+      for (let k = 0; k <= K; k++) { ring[off + k] = cur[k]; cur[k] = Sm[k]; }
+      this.sub = (this.sub + 1) % D;
+      for (let k = 0; k <= K; k++) {
+        let m = 1e30;
+        for (let d = 0; d < D; d++) { const v = ring[d * B + k]; if (v < m) m = v; }
+        ringMin[k] = m;
+      }
+    }
     for (let k = 0; k <= K; k++) {
-      const p = Ps[k];
-      if (this.frames < 15) noise[k] = this.frames === 0 ? p : 0.7 * noise[k] + 0.3 * p;
-      else if (p < noise[k]) noise[k] = noise[k] * 0.85 + p * 0.15;
-      else noise[k] = Math.min(noise[k] * rise, p);
-      if (noise[k] < 1e-10) noise[k] = 1e-10;
+      const m = Math.min(cur[k], ringMin[k]);
+      noise[k] = Math.max(1e-10, m * 1.7); // 1.7 compensates that a minimum under-estimates the average
     }
     this.frames++;
+
+    // 2. gain
     const s = this.strength;
-    if (s <= 0) { gs.fill(1); }
-    else {
-      const alpha = 1 + s * 0.25, gmin = Math.pow(10, -(6 + s * 2.4) / 20);
+    if (s <= 0) {
+      gs.fill(1); G.fill(1);
+      for (let k = 0; k <= K; k++) prevClean[k] = P[k];
+    } else {
+      const beta = 1 + s * 0.2;
+      const gmin = Math.pow(10, -(4 + s * 1.6) / 20);
       for (let k = 0; k <= K; k++) {
-        const ratio = alpha * 1.6 * noise[k] / (P[k] + 1e-12);
-        let gn = ratio >= 1 ? 0 : Math.sqrt(1 - ratio);
+        const nz = noise[k];
+        const gamma = P[k] / nz;
+        const xi = 0.9 * prevClean[k] / nz + 0.1 * Math.max(gamma - 1, 0);
+        let gn = xi / (xi + beta);
         if (gn < gmin) gn = gmin;
         const g = G[k];
-        G[k] = gn > g ? g + (gn - g) * 0.75 : g + (gn - g) * 0.35;
+        G[k] = gn > g ? g + (gn - g) * 0.8 : g + (gn - g) * 0.5;
       }
       for (let k = 0; k <= K; k++) {
         const a = G[k > 0 ? k - 1 : 0], c = G[k < K ? k + 1 : K];
         gs[k] = 0.25 * a + 0.5 * G[k] + 0.25 * c;
+        prevClean[k] = gs[k] * gs[k] * P[k];
       }
     }
+
+    // 3. apply, overlap-add
     for (let k = 0; k <= K; k++) { re[k] *= gs[k]; im[k] *= gs[k]; }
     for (let k = 1; k < K; k++) { re[N - k] *= gs[k]; im[N - k] *= gs[k]; }
     this.fft(true);
@@ -224,10 +346,32 @@ const $ = id => document.getElementById(id);
 let deafLeft = true, running = false, busy = false, needTap = false;
 let ctx, stream, wake, raf, watchTimer, nrURL;
 let n = {};
+let hpOverride = false, hpMode = '', lastHpCheck = 0;
 let deafSign = 0; // +1 means the deaf side is the left mic channel, -1 the right
 try { deafSign = +localStorage.getItem('eb_sign') || 0; } catch (e) {}
 
 function setStat(t) { $('stat').textContent = t || ''; }
+
+// Remember settings between visits
+function saveSet() {
+  try {
+    localStorage.setItem('eb_set', JSON.stringify({
+      gain: $('gain').value, nr: $('nr').value, voice: $('voice').checked,
+      tick: $('tick').checked, left: deafLeft
+    }));
+  } catch (e) {}
+}
+function loadSet() {
+  try {
+    const s = JSON.parse(localStorage.getItem('eb_set') || 'null');
+    if (!s) return;
+    if (s.gain !== undefined) $('gain').value = s.gain;
+    if (s.nr !== undefined) $('nr').value = s.nr;
+    $('voice').checked = s.voice !== false;
+    $('tick').checked = s.tick !== false;
+    deafLeft = s.left !== false;
+  } catch (e) {}
+}
 
 function setSide(left) {
   deafLeft = left;
@@ -236,9 +380,10 @@ function setSide(left) {
   $('side').textContent = 'Sound plays only in your ' + (left ? 'right' : 'left') + ' earbud.';
   if (n.pan) n.pan.pan.value = left ? 1 : -1;
 }
-$('bl').onclick = () => setSide(true);
-$('br').onclick = () => setSide(false);
-setSide(true);
+$('bl').onclick = () => { setSide(true); saveSet(); };
+$('br').onclick = () => { setSide(false); saveSet(); };
+loadSet();
+setSide(deafLeft);
 
 const dbToGain = db => Math.pow(10, db / 20);
 const toDb = x => 20 * Math.log10(x + 1e-9);
@@ -248,16 +393,20 @@ function peakOf(b) { let m = 0; for (let i = 0; i < b.length; i++) { const a = M
 function applyAudio() {
   $('gv').textContent = $('gain').value;
   $('nv').textContent = $('nr').value;
+  saveSet();
   if (!n.gain) return;
   const t = ctx.currentTime;
   const v = $('voice').checked;
-  n.peak.gain.setTargetAtTime(v ? 6 : 0, t, 0.05);
+  n.peak.gain.setTargetAtTime(v ? 4 : 0, t, 0.05);
   n.lp.frequency.setTargetAtTime(v ? 6500 : 12000, t, 0.05);
   if (n.nr && n.nr.port) n.nr.port.postMessage({ strength: +$('nr').value });
 }
 $('gain').oninput = applyAudio;
 $('nr').oninput = applyAudio;
 $('voice').onchange = applyAudio;
+$('tick').onchange = saveSet;
+$('gv').textContent = $('gain').value;
+$('nv').textContent = $('nr').value;
 
 async function getStream(deviceId) {
   const audio = { echoCancellation: false, noiseSuppression: $('sys').checked, autoGainControl: false, channelCount: { ideal: 2 } };
@@ -285,6 +434,33 @@ async function fillMics() {
   return list;
 }
 
+// ---- Earbud detection (best effort: browsers do not expose the active output directly) ----
+const RE_BUILTIN = /iphone|ipad|built-?in|internal|macbook|telephony|earpiece|receiver|speaker|front|back|bottom|^microphone$/i;
+const RE_PHONES = /airpods|bluetooth|headset|headphone|earbud|buds|earphone|wired|usb|beats|bose|jabra/i;
+const labelOf = d => (d.label || '').replace(/^(default|communications)\s*-\s*/i, '').trim();
+const isExternal = l => !!l && !/^(default|communications)$/i.test(l) && (RE_PHONES.test(l) || !RE_BUILTIN.test(l));
+// returns 'yes' (earbuds found), 'no' (only the phone speaker found), 'unsure' (cannot tell), 'blind' (no labels yet)
+async function detectEarbuds() {
+  let devs = [];
+  try { devs = await navigator.mediaDevices.enumerateDevices(); } catch (e) { return 'unsure'; }
+  const ins = devs.filter(d => d.kind === 'audioinput'), outs = devs.filter(d => d.kind === 'audiooutput');
+  const labelled = ins.concat(outs).filter(d => labelOf(d));
+  if (!labelled.length) return 'blind';
+  if (labelled.some(d => isExternal(labelOf(d)))) return 'yes';
+  return outs.length ? 'no' : 'unsure';
+}
+const MSG_LOST = 'Earbuds disconnected. EarBridge stopped to avoid loud feedback through the speaker.';
+if (navigator.mediaDevices && navigator.mediaDevices.addEventListener) {
+  navigator.mediaDevices.addEventListener('devicechange', () => {
+    if (!running || busy || hpMode !== 'yes') return;
+    setTimeout(async () => {
+      if (!running || busy || hpMode !== 'yes') return;
+      const s = await detectEarbuds();
+      if (s === 'no' || s === 'unsure') stop(MSG_LOST);
+    }, 700);
+  });
+}
+
 // Builds the whole audio chain. Used for the first start and for recovery after calls or alerts.
 async function build() {
   ctx = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: 'interactive' });
@@ -299,6 +475,11 @@ async function build() {
       $('mic').value = phone.deviceId;
     }
   }
+  if (!hpOverride) {
+    const st = await detectEarbuds();
+    if (st !== 'yes') { const er = new Error('No earbuds'); er.name = 'NoEarbuds'; er.state = st === 'no' ? 'no' : 'unsure'; throw er; }
+    hpMode = 'yes';
+  } else hpMode = 'override';
   const track = stream.getAudioTracks()[0];
   track.onended = () => { if (running && !busy) recover(); };
   track.onmute = () => { if (running) setStat('Paused by a call or alert. It will resume by itself.'); };
@@ -315,7 +496,6 @@ async function build() {
   n.hp = ctx.createBiquadFilter(); n.hp.type = 'highpass'; n.hp.frequency.value = 120;
 
   // Noise suppressor (runs on the audio thread)
-  let hasNR = false;
   try {
     if (!nrURL) nrURL = URL.createObjectURL(new Blob([$('nr-src').textContent], { type: 'application/javascript' }));
     await ctx.audioWorklet.addModule(nrURL);
@@ -323,7 +503,6 @@ async function build() {
       numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [1],
       channelCount: 1, channelCountMode: 'explicit'
     });
-    hasNR = true;
   } catch (e) {
     n.nr = ctx.createGain();
     $('err').textContent = 'Strong noise cleanup is not supported on this browser version. Update iOS for the best result.';
@@ -333,21 +512,30 @@ async function build() {
   n.lp = ctx.createBiquadFilter(); n.lp.type = 'lowpass';
   n.pre = ctx.createAnalyser(); n.pre.fftSize = 1024;
   n.gain = ctx.createGain(); n.gain.gain.value = dbToGain(+$('gain').value);
+
+  // Gentle leveler: slow release so the background does not pump up and down between words
   n.comp = ctx.createDynamicsCompressor();
-  n.comp.threshold.value = -24; n.comp.knee.value = 12; n.comp.ratio.value = 4;
-  n.comp.attack.value = 0.005; n.comp.release.value = 0.2;
+  n.comp.threshold.value = -26; n.comp.knee.value = 20; n.comp.ratio.value = 3;
+  n.comp.attack.value = 0.01; n.comp.release.value = 0.4;
+  // Fast limiter that catches loud peaks
+  n.lim = ctx.createDynamicsCompressor();
+  n.lim.threshold.value = -8; n.lim.knee.value = 0; n.lim.ratio.value = 20;
+  n.lim.attack.value = 0.002; n.lim.release.value = 0.12;
+  // Last-resort safety clip, unity gain for normal levels
   n.shape = ctx.createWaveShaper();
   const curve = new Float32Array(2049);
-  for (let i = 0; i < curve.length; i++) { const x = i / 1024 - 1; curve[i] = 1.5 * (x - x * x * x / 3); }
-  n.shape.curve = curve; n.shape.oversample = '4x';
-  n.trim = ctx.createGain(); n.trim.gain.value = 0.7;
+  for (let i = 0; i < curve.length; i++) { const x = i / 1024 - 1; curve[i] = Math.tanh(x); }
+  n.shape.curve = curve; n.shape.oversample = '2x';
+  n.trim = ctx.createGain(); n.trim.gain.value = 0; // fade in, no start-up burst
+  n.trim.gain.setValueAtTime(0, ctx.currentTime);
+  n.trim.gain.linearRampToValueAtTime(0.8, ctx.currentTime + 1.0);
   n.pan = ctx.createStereoPanner();
   n.an = ctx.createAnalyser(); n.an.fftSize = 512;
 
   src.connect(n.mono).connect(n.hp).connect(n.nr).connect(n.peak).connect(n.lp);
   n.lp.connect(n.pre);
   n.fa = ctx.createAnalyser(); n.fa.fftSize = 1024; n.lp.connect(n.fa);
-  n.lp.connect(n.gain).connect(n.comp).connect(n.shape).connect(n.trim).connect(n.pan).connect(ctx.destination);
+  n.lp.connect(n.gain).connect(n.comp).connect(n.lim).connect(n.shape).connect(n.trim).connect(n.pan).connect(ctx.destination);
   n.trim.connect(n.an);
 
   // Direction path: needs a real two-channel mic
@@ -358,12 +546,18 @@ async function build() {
   n.anR = ctx.createAnalyser(); n.anR.fftSize = 1024;
   src.connect(n.up).connect(split);
   split.connect(n.anL, 0); split.connect(n.anR, 1);
+  // buffers made once, not every frame
+  n.bA = new Float32Array(n.an.fftSize);
+  n.bP = new Float32Array(n.pre.fftSize);
+  n.bL = new Float32Array(n.anL.fftSize);
+  n.bR = new Float32Array(n.anR.fftSize);
+  n.bF = new Float32Array(n.fa.frequencyBinCount);
   n.stereoMaybe = chCount !== 1;
   n.loudN = 0; n.diffN = 0; n.stereoOK = null;
   n.floor = null; n.last = performance.now();
   n.loud = false; n.lastLoud = 0; n.pendingAt = 0; n.lastCue = 0; n.ild = 0;
   n.calUntil = 0; n.calSum = 0; n.calN = 0;
-  n.duck = 1; n.hot = 0; n.duckMsgUntil = 0;
+  n.duck = 1; n.hot = 0; n.duckMsgUntil = 0; n.holdUntil = 0; n.lastTg = -1;
 
   setSide(deafLeft); applyAudio();
   updateDStat();
@@ -378,7 +572,7 @@ function teardown() {
 }
 
 async function start() {
-  $('err').textContent = ''; setStat('');
+  $('err').textContent = ''; setStat(''); $('force').hidden = true;
   if (!$('hp').checked) { $('err').textContent = 'Please confirm you are wearing earbuds first.'; return; }
   busy = true;
   try {
@@ -388,19 +582,26 @@ async function start() {
     try { wake = await navigator.wakeLock.request('screen'); } catch (e) {}
     clearInterval(watchTimer); watchTimer = setInterval(watch, 800);
   } catch (e) {
+    if (e && e.name === 'NoEarbuds') {
+      $('err').textContent = e.state === 'no'
+        ? 'No earbuds or headphones detected, so EarBridge did not start. Connect them, then tap Start again. This avoids loud feedback through the speaker.'
+        : 'Could not confirm that earbuds are connected, so EarBridge did not start. Connect them and try again.';
+      $('force').hidden = e.state === 'no';
+    } else
     $('err').textContent = 'Could not start: ' + (e.message || e.name) + '. Allow microphone access for this site.';
     teardown();
   }
   busy = false;
 }
 
-function stop() {
-  running = false; needTap = false;
+function stop(msg) {
+  running = false; needTap = false; hpOverride = false; hpMode = ''; $('force').hidden = true;
   clearInterval(watchTimer);
   teardown();
   if (wake) { try { wake.release(); } catch (e) {} wake = null; }
   $('lvl').style.width = '0'; setStat('');
   $('go').textContent = 'Start listening'; $('go').className = '';
+  if (typeof msg === 'string') $('err').textContent = msg;
 }
 
 // After a call, alert or route change: rebuild everything without losing the running state.
@@ -415,6 +616,7 @@ async function recover() {
     $('go').textContent = 'Stop listening'; $('go').className = 'run';
     try { if (!wake) wake = await navigator.wakeLock.request('screen'); } catch (e) {}
   } catch (e) {
+    if (e && e.name === 'NoEarbuds') { busy = false; stop(MSG_LOST); return; }
     needTap = true;
     setStat('EarBridge was paused. Tap the orange button to continue.');
     $('go').textContent = 'Tap to resume'; $('go').className = 'tap';
@@ -427,6 +629,11 @@ async function watch() {
   if (!running || busy || needTap) return;
   const tr = stream && stream.getAudioTracks()[0];
   if (!tr || tr.readyState === 'ended' || !ctx || ctx.state === 'closed') return recover();
+  if (hpMode === 'yes' && Date.now() - lastHpCheck > 3000) {
+    lastHpCheck = Date.now();
+    const s = await detectEarbuds();
+    if (s === 'no' || s === 'unsure') return stop(MSG_LOST);
+  }
   if (ctx.state !== 'running') { try { await ctx.resume(); } catch (e) {} }
   if (ctx.state === 'running' && !tr.muted) { if ($('stat').textContent.indexOf('Paused') === 0) setStat(''); }
   else setStat('Paused by a call or alert. It will resume by itself.');
@@ -479,19 +686,25 @@ function loop() {
   const now = performance.now();
   const dt = Math.min(0.1, (now - n.last) / 1000); n.last = now;
 
-  // Output meter and overload guard (stops squealing and harsh distortion at high boost)
-  const bA = new Float32Array(n.an.fftSize); n.an.getFloatTimeDomainData(bA);
-  $('lvl').style.width = Math.min(100, rms(bA) * 500) + '%';
-  if (peakOf(bA) > 0.6) n.hot += dt; else n.hot = Math.max(0, n.hot - dt * 2);
-  if (n.hot > 0.7) {
-    n.duck = Math.max(0.25, n.duck * 0.6); n.hot = 0; n.duckMsgUntil = now + 3000;
-    setStat('Volume lowered automatically to stop squealing or harsh sound.');
-  } else n.duck = Math.min(1, n.duck + dt * 0.05);
+  // Output meter
+  const bA = n.bA; n.an.getFloatTimeDomainData(bA);
+  const outRms = rms(bA);
+  $('lvl').style.width = (outRms > 0.002 ? Math.min(100, 38 + outRms * 420) : 0) + '%';
+
+  // Feedback guard. Only a loud, sustained output (a squeal) lowers the volume.
+  // Normal peaks are handled by the limiter, so the volume no longer rises and falls by itself.
+  if (outRms > 0.25) n.hot += dt; else n.hot = Math.max(0, n.hot - dt * 2);
+  if (n.hot > 1.0) {
+    n.duck = Math.max(0.25, n.duck * 0.6); n.hot = 0;
+    n.holdUntil = now + 8000; n.duckMsgUntil = now + 3000;
+    setStat('Volume lowered automatically. If you hear squealing, move the phone away from the earbuds.');
+  } else if (now > n.holdUntil) n.duck = Math.min(1, n.duck + dt * 0.1);
   if (n.duckMsgUntil && now > n.duckMsgUntil) { n.duckMsgUntil = 0; if ($('stat').textContent.indexOf('Volume lowered') === 0) setStat(''); }
-  n.gain.gain.setTargetAtTime(dbToGain(+$('gain').value) * n.duck, ctx.currentTime, 0.05);
+  const tg = dbToGain(+$('gain').value) * n.duck;
+  if (Math.abs(tg - n.lastTg) > 1e-4) { n.gain.gain.setTargetAtTime(tg, ctx.currentTime, 0.08); n.lastTg = tg; }
 
   // Level after noise cleanup, used to spot new sounds
-  const bP = new Float32Array(n.pre.fftSize); n.pre.getFloatTimeDomainData(bP);
+  const bP = n.bP; n.pre.getFloatTimeDomainData(bP);
   const db = toDb(rms(bP));
   if (n.floor === null) n.floor = db;
   const above = db > n.floor + 6;
@@ -502,7 +715,7 @@ function loop() {
 
   // Direction
   if (n.stereoMaybe && n.stereoOK !== false) {
-    const bL = new Float32Array(n.anL.fftSize), bR = new Float32Array(n.anR.fftSize);
+    const bL = n.bL, bR = n.bR;
     n.anL.getFloatTimeDomainData(bL); n.anR.getFloatTimeDomainData(bR);
     const l = rms(bL), r = rms(bR);
     const loudEnough = toDb(Math.max(l, r)) > -50;
@@ -606,7 +819,7 @@ function findStep(above, now) {
   }
   if (find.state === 'sweep') {
     if (above) {
-      const arr = new Float32Array(n.fa.frequencyBinCount); n.fa.getFloatFrequencyData(arr);
+      const arr = n.bF; n.fa.getFloatFrequencyData(arr);
       const hz = ctx.sampleRate / n.fa.fftSize;
       let p = 0, c = 0;
       for (let i = Math.floor(2000 / hz); i <= Math.floor(6000 / hz) && i < arr.length; i++) { p += Math.pow(10, arr[i] / 10); c++; }
@@ -632,6 +845,7 @@ function findStep(above, now) {
   if (a < 15 && now - find.lastAlign > 1500) { find.lastAlign = now; beep(2400, 2); }
 }
 
+$('force').onclick = () => { hpOverride = true; $('force').hidden = true; start(); };
 $('go').onclick = async () => {
   if (needTap) { needTap = false; return recover(); }
   if (running) stop(); else start();
@@ -644,6 +858,23 @@ document.addEventListener('visibilitychange', async () => {
     watch();
   }
 });
+</script>
+<script>
+(function () {
+  var go = document.getElementById('go'), pill = document.getElementById('pill');
+  var names = { run: 'Listening', tap: 'Paused', idle: 'Idle' };
+  function sync() {
+    var s = go.classList.contains('run') ? 'run' : go.classList.contains('tap') ? 'tap' : 'idle';
+    document.body.dataset.state = s; pill.textContent = names[s];
+  }
+  new MutationObserver(sync).observe(go, { attributes: true, attributeFilter: ['class'] });
+  sync();
+  ['gain', 'nr'].forEach(function (id) {
+    var e = document.getElementById(id);
+    function f() { e.style.setProperty('--p', ((e.value - e.min) / (e.max - e.min) * 100) + '%'); }
+    e.addEventListener('input', f); f();
+  });
+})();
 </script>
 </body>
 </html>
