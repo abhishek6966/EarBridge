@@ -84,6 +84,3 @@ README.md          this file
 
 Start quiet and raise the volume slowly. The soft limiter protects against sudden peaks, but you are still responsible for a safe listening level. Talk to an audiologist about CROS or bone-conduction options for permanent use.
 
-## License
-
-Add a `LICENSE` file of your choice (MIT is a common pick for open projects).
