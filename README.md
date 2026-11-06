@@ -4,7 +4,7 @@
 
 EarBridge is a free prototype for people who are deaf in one ear. It listens through the phone mic and plays the live sound only into the earbud on the hearing side, so you pick up conversations from your deaf side too. It is a software take on the idea behind CROS hearing aids.
 
-![EarBridge overview](docs/architecture.svg)
+![EarBridge overview](architecture.svg)
 
 > **Status:** early prototype. Not a medical device and not a replacement for an audiologist. Not fully tested on real phones yet.
 
