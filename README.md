@@ -19,6 +19,7 @@ No install needed. It runs in your phone browser.
 5. In the Microphone list choose the **phone's own microphone**, not your earbuds.
 6. Keep the screen on. Start with low volume and raise it slowly.
 
+
 ## What it does
 
 | Feature | Status |
@@ -30,6 +31,7 @@ No install needed. It runs in your phone browser.
 | Noise cleanup that learns and removes steady background noise | Yes |
 | Soft limiter against harsh peaks and squealing | Yes |
 | Automatic recovery after calls and notification sounds | Yes |
+| Find the voice: arrow and ticks that point to where someone is talking, works on any phone | Experimental |
 | Deaf-side alert: tick in good ear and screen glow | Experimental |
 | Deaf-side alert: vibration | Only where the browser allows it (Safari does not) |
 
@@ -42,6 +44,9 @@ flowchart LR
   V --> B[Boost + soft limiter]
   B --> P[Pan to good ear]
   P --> E[Earbuds]
+  M --> F[Find the voice<br/>turn in a circle + compass]
+  F --> A2[Arrow + ticks to the voice]
+  A2 --> E
   M --> D[Left/right mic compare]
   D --> N{New sound on<br/>deaf side?}
   N -->|yes| A[Tick, glow, vibration]
@@ -52,6 +57,7 @@ flowchart LR
 - **Noise cleanup** uses spectral noise reduction. It keeps a running estimate of the steady background (fans, traffic, hiss) for each frequency and turns those parts down while leaving voices. Start at 6 out of 10. Very high settings can make voices sound thin.
 - **Boost** changes smoothly, then passes through a compressor and a soft limiter. If sound stays near the maximum, the app lowers the volume by itself to stop squealing or harsh distortion.
 - **Calls and notifications** can pause the microphone. EarBridge watches for this and resumes on its own. If the phone refuses, an orange **Tap to resume** button appears.
+- **Find the voice** solves the hardest part of hearing with one ear: knowing where a sound comes from. Hold the phone upright at your chest and turn slowly in a full circle while the person talks. Your body blocks a little of the voice when the phone faces away, so the app records loudness by compass heading and finds the loudest direction. It then shows an arrow, tells you left or right with a clock position, warns when the voice is on your deaf side, and plays two quick ticks in your good ear when you face it. Run it again if the person moves.
 - **Deaf-side alert** compares loudness on the phone's two mic channels. You calibrate once by clapping on your deaf side. It only works if the browser gives a real two-channel mic.
 
 ## For music, calls and videos
@@ -70,6 +76,7 @@ No web page can capture other apps' audio. Use the phone's system setting instea
 - Noise cleanup cannot separate a voice from another voice or from music.
 - Do not rely on EarBridge for traffic or safety. The phone mic can miss sounds from your deaf side.
 - Browsers pause web audio if the screen locks, so keep the screen on.
+- Find the voice depends on a quiet-enough room and a talker who keeps talking during the turn. It needs Motion and Orientation access, which the phone asks for the first time.
 - True per-earbud direction sensing needs mics in each bud, which phones do not expose.
 
 ## Files
@@ -83,4 +90,3 @@ README.md          this file
 ## Safety
 
 Start quiet and raise the volume slowly. The soft limiter protects against sudden peaks, but you are still responsible for a safe listening level. Talk to an audiologist about CROS or bone-conduction options for permanent use.
-
