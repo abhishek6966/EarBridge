@@ -77,6 +77,16 @@
   </section>
 
   <section class="card">
+    <b>Find the voice (works on any phone)</b>
+    <div class="mut">Hold the phone upright at your chest and turn slowly in a full circle while the person talks. Your body blocks a little sound from behind, so the app finds the loudest direction. Then the arrow points to the voice and you hear two quick ticks when you face it.</div>
+    <div id="ring" style="margin:14px auto;width:130px;height:130px;border-radius:50%;border:3px solid var(--acc);display:flex;align-items:center;justify-content:center;opacity:.3">
+      <div id="arrow" style="font-size:54px;line-height:1;transition:transform .15s">&#9650;</div>
+    </div>
+    <button class="small" id="find" style="width:100%">Find the voice</button>
+    <div class="mut" id="fstat" style="margin-top:8px"></div>
+  </section>
+
+  <section class="card">
     <b>Deaf-side alert (experimental)</b>
     <label class="row" style="margin-top:6px"><input type="checkbox" id="dir"> Alert me when a new sound starts on my deaf side</label>
     <label class="row"><input type="checkbox" id="tick" checked> Soft tick in my good ear</label>
@@ -336,6 +346,7 @@ async function build() {
 
   src.connect(n.mono).connect(n.hp).connect(n.nr).connect(n.peak).connect(n.lp);
   n.lp.connect(n.pre);
+  n.fa = ctx.createAnalyser(); n.fa.fftSize = 1024; n.lp.connect(n.fa);
   n.lp.connect(n.gain).connect(n.comp).connect(n.shape).connect(n.trim).connect(n.pan).connect(ctx.destination);
   n.trim.connect(n.an);
 
@@ -439,11 +450,16 @@ function cue() {
   setTimeout(() => f.classList.remove('show'), 900);
   try { if (navigator.vibrate) navigator.vibrate([60, 40, 60]); } catch (e) {}
   try { $('hs').click(); } catch (e) {}
-  if ($('tick').checked && ctx && n.pan) {
+  if ($('tick').checked) beep(1800, 1);
+}
+function beep(freq, count) {
+  if (!ctx || !n.pan) return;
+  for (let k = 0; k < (count || 1); k++) {
     const o = ctx.createOscillator(), g = ctx.createGain();
-    o.frequency.value = 1800; g.gain.value = 0.0001;
+    o.frequency.value = freq; g.gain.value = 0.0001;
     o.connect(g).connect(n.pan);
-    const t = ctx.currentTime;
+    const t = ctx.currentTime + k * 0.15;
+    g.gain.setValueAtTime(0.0001, t);
     g.gain.exponentialRampToValueAtTime(0.2, t + 0.01);
     g.gain.exponentialRampToValueAtTime(0.0001, t + 0.12);
     o.start(t); o.stop(t + 0.15);
@@ -482,6 +498,7 @@ function loop() {
   if (db < n.floor) n.floor += (db - n.floor) * 0.2;
   else n.floor += (above ? 0.05 : 0.5) * dt;
   n.floor = Math.max(-100, Math.min(-35, n.floor));
+  findStep(above, now);
 
   // Direction
   if (n.stereoMaybe && n.stereoOK !== false) {
@@ -524,6 +541,95 @@ function loop() {
     }
   }
   raf = requestAnimationFrame(loop);
+}
+
+
+// ---- Find the voice: turn in a circle, loudest compass direction wins ----
+let heading = null;
+let find = { state: 'idle' };
+function onOrient(e) {
+  if (typeof e.webkitCompassHeading === 'number') heading = e.webkitCompassHeading;
+  else if (e.absolute && e.alpha != null) heading = (360 - e.alpha) % 360;
+}
+async function askOrientation() {
+  try {
+    if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+      const r = await DeviceOrientationEvent.requestPermission();
+      if (r !== 'granted') return false;
+    }
+  } catch (e) { return false; }
+  window.addEventListener('deviceorientation', onOrient, true);
+  window.addEventListener('deviceorientationabsolute', onOrient, true);
+  return true;
+}
+function endFind(msg) {
+  find = { state: 'idle' };
+  $('find').textContent = 'Find the voice';
+  $('ring').style.opacity = '.3';
+  $('arrow').style.transform = 'rotate(0deg)';
+  $('fstat').textContent = msg || '';
+}
+$('find').onclick = async () => {
+  if (find.state === 'sweep' || find.state === 'guide') { endFind('Stopped.'); return; }
+  if (!running || !n.fa) { $('fstat').textContent = 'Start listening first.'; return; }
+  const ok = await askOrientation();
+  if (!ok) { $('fstat').textContent = 'Compass access is needed. Allow Motion and Orientation access, then try again.'; return; }
+  heading = null;
+  find = { state: 'sweep', t0: performance.now(), sum: new Float64Array(18), cnt: new Uint16Array(18), bearing: 0, lastAlign: 0 };
+  $('find').textContent = 'Stop';
+  $('fstat').textContent = 'Hold the phone upright at your chest. Turn slowly in a full circle while the person keeps talking.';
+};
+function finishSweep(cov) {
+  if (cov < 10) return endFind('Not enough of the circle was covered. Try again while the person keeps talking.');
+  const db = [];
+  for (let i = 0; i < 18; i++) db.push(find.cnt[i] >= 3 ? 10 * Math.log10(find.sum[i] / find.cnt[i] + 1e-20) : null);
+  const sm = db.map((v, i) => {
+    if (v === null) return null;
+    let s = v * 2, w = 2;
+    for (const d of [-1, 1]) { const u = db[(i + d + 18) % 18]; if (u !== null) { s += u; w++; } }
+    return s / w;
+  });
+  let best = -1, bv = -1e9; const vals = [];
+  sm.forEach((v, i) => { if (v !== null) { vals.push(v); if (v > bv) { bv = v; best = i; } } });
+  vals.sort((a, b) => a - b);
+  const med = vals[Math.floor(vals.length / 2)];
+  if (bv - med < 2) return endFind('The sound was too even all around, so the direction is unclear. Try again closer to the person.');
+  find.bearing = best * 20 + 10; find.state = 'guide'; find.lastAlign = 0;
+  $('ring').style.opacity = '1';
+  $('find').textContent = 'Stop';
+}
+function findStep(above, now) {
+  if (find.state === 'idle') return;
+  if (heading === null) {
+    if (now - find.t0 > 3000) $('fstat').textContent = 'No compass reading yet. Check that Motion access is allowed and move the phone a little.';
+    return;
+  }
+  if (find.state === 'sweep') {
+    if (above) {
+      const arr = new Float32Array(n.fa.frequencyBinCount); n.fa.getFloatFrequencyData(arr);
+      const hz = ctx.sampleRate / n.fa.fftSize;
+      let p = 0, c = 0;
+      for (let i = Math.floor(2000 / hz); i <= Math.floor(6000 / hz) && i < arr.length; i++) { p += Math.pow(10, arr[i] / 10); c++; }
+      if (c) { const b = Math.floor(heading / 20) % 18; find.sum[b] += p / c; find.cnt[b]++; }
+    }
+    let cov = 0; for (let i = 0; i < 18; i++) if (find.cnt[i] >= 3) cov++;
+    const el = (now - find.t0) / 1000;
+    $('fstat').textContent = 'Keep turning slowly... ' + Math.round(cov / 18 * 100) + '% covered';
+    if ((cov >= 16 && el >= 6) || el > 20) finishSweep(cov);
+    return;
+  }
+  const rel = ((find.bearing - heading + 540) % 360) - 180; // negative is left, positive is right
+  const a = Math.abs(rel);
+  $('arrow').style.transform = 'rotate(' + rel + 'deg)';
+  let t;
+  if (a < 15) t = 'Facing the sound';
+  else {
+    const hr = (Math.round(rel / 30) + 12) % 12 || 12;
+    t = (a > 150 ? 'Behind you' : (rel > 0 ? 'On your right' : 'On your left')) + ', about ' + Math.round(a) + ' degrees (' + hr + " o'clock)";
+    if ((rel > 0 && !deafLeft) || (rel < 0 && deafLeft)) t += '. That is your deaf side.';
+  }
+  $('fstat').textContent = t;
+  if (a < 15 && now - find.lastAlign > 1500) { find.lastAlign = now; beep(2400, 2); }
 }
 
 $('go').onclick = async () => {
