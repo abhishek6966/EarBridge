@@ -20,6 +20,7 @@
   .seg button.on { border-color: var(--acc); font-weight: 600; }
   #go { padding: 20px; border: 0; border-radius: 16px; background: var(--acc); color: #fff; font-size: 20px; font-weight: 700; }
   #go.run { background: var(--stop); }
+  #go.tap { background: #f59e0b; }
   .small { padding: 12px; border-radius: 10px; border: 0; background: var(--card); color: var(--fg); }
   .bar { height: 10px; background: var(--card); border-radius: 6px; overflow: hidden; }
   #lvl { height: 100%; width: 0; background: #22c55e; }
@@ -28,6 +29,7 @@
   select { width: 100%; padding: 10px; border-radius: 10px; font-size: 16px; }
   .card { background: var(--card); padding: 14px; border-radius: 12px; }
   #err { color: var(--stop); font-size: 14px; }
+  #stat { color: #b45309; font-size: 14px; min-height: 20px; }
   .two { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
   #flash { position: fixed; inset: 0; pointer-events: none; opacity: 0; transition: opacity .5s;
            display: flex; align-items: center; justify-content: center; font-size: 22px; font-weight: 700; color: #fff; text-align: center; padding: 30px; }
@@ -57,19 +59,21 @@
 
   <button id="go">Start listening</button>
   <div class="bar"><div id="lvl"></div></div>
+  <div id="stat"></div>
   <div id="err"></div>
 
   <section>
     <b>Volume boost: +<span id="gv">12</span> dB</b>
     <input type="range" id="gain" min="0" max="24" step="1" value="12">
-    <label class="row"><input type="checkbox" id="voice" checked> Voice focus (clearer speech)</label>
+    <div class="mut">Above +18 dB adds hiss. Moving the phone closer to the speaker sounds better than a huge boost.</div>
+    <label class="row" style="margin-top:8px"><input type="checkbox" id="voice" checked> Voice focus (clearer speech)</label>
   </section>
 
   <section class="card">
-    <b>Noise cleanup: <span id="nv">5</span> / 10</b>
-    <input type="range" id="nr" min="0" max="10" step="1" value="5">
-    <div class="mut">Learns the steady background noise and quiets it between sounds. Higher means stronger. 0 turns it off.</div>
-    <label class="row" style="margin-top:8px"><input type="checkbox" id="sys"> Also try the iPhone's own noise filter (restart to apply, may lower quality)</label>
+    <b>Noise cleanup: <span id="nv">6</span> / 10</b>
+    <input type="range" id="nr" min="0" max="10" step="1" value="6">
+    <div class="mut">Learns the steady background noise (fans, traffic, hiss) and removes it from the sound, even while people talk. Higher is stronger. Too high can make voices sound thin. 0 turns it off.</div>
+    <label class="row" style="margin-top:8px"><input type="checkbox" id="sys"> Also try the phone's own noise filter (restart to apply, may lower quality)</label>
   </section>
 
   <section class="card">
@@ -91,17 +95,129 @@
 
   <div class="card mut">
     Keep this screen open while listening. Put the phone mic toward the people you want to hear.
+    If a call or alert interrupts, EarBridge resumes by itself. If it cannot, tap the orange button.
     For music, calls and videos: Settings > Accessibility > Audio &amp; Visual, turn on Mono Audio and slide Balance to your good ear.
     Start with low volume and raise it slowly.
   </div>
 </main>
 
+<script type="text/plain" id="nr-src">// EarBridge noise suppressor: spectral subtraction with per-bin noise tracking.
+class NRCore {
+  constructor(sr) {
+    const N = 512, H = 256, K = N / 2;
+    this.N = N; this.H = H; this.K = K; this.sr = sr; this.strength = 6;
+    this.win = new Float32Array(N);
+    for (let i = 0; i < N; i++) this.win[i] = Math.sqrt(0.5 * (1 - Math.cos(2 * Math.PI * i / N)));
+    this.cosT = new Float32Array(K); this.sinT = new Float32Array(K);
+    for (let i = 0; i < K; i++) { this.cosT[i] = Math.cos(2 * Math.PI * i / N); this.sinT[i] = -Math.sin(2 * Math.PI * i / N); }
+    this.rev = new Uint16Array(N);
+    const bits = Math.log2(N);
+    for (let i = 0; i < N; i++) { let r = 0; for (let b = 0; b < bits; b++) if (i & (1 << b)) r |= 1 << (bits - 1 - b); this.rev[i] = r; }
+    this.re = new Float32Array(N); this.im = new Float32Array(N);
+    this.inBuf = new Float32Array(N); this.inFill = 0;
+    this.acc = new Float32Array(N);
+    this.q = new Float32Array(4096); this.qh = 0; this.qt = 0;
+    this.P = new Float32Array(K + 1); this.Ps = new Float32Array(K + 1); this.noise = new Float32Array(K + 1);
+    this.G = new Float32Array(K + 1).fill(1); this.gs = new Float32Array(K + 1).fill(1);
+    this.frames = 0;
+  }
+  fft(inverse) {
+    const { N, re, im, rev, cosT, sinT } = this;
+    for (let i = 0; i < N; i++) { const j = rev[i]; if (j > i) { let t = re[i]; re[i] = re[j]; re[j] = t; t = im[i]; im[i] = im[j]; im[j] = t; } }
+    for (let size = 2; size <= N; size <<= 1) {
+      const half = size >> 1, step = N / size;
+      for (let i = 0; i < N; i += size) {
+        for (let j = 0, k = 0; j < half; j++, k += step) {
+          const wr = cosT[k], wi = inverse ? -sinT[k] : sinT[k];
+          const a = i + j, b = a + half;
+          const tr = wr * re[b] - wi * im[b], ti = wr * im[b] + wi * re[b];
+          re[b] = re[a] - tr; im[b] = im[a] - ti; re[a] += tr; im[a] += ti;
+        }
+      }
+    }
+    if (inverse) for (let i = 0; i < N; i++) { re[i] /= N; im[i] /= N; }
+  }
+  frame() {
+    const { N, H, K, re, im, win, P, noise, G, gs } = this;
+    for (let i = 0; i < N; i++) { re[i] = this.inBuf[i] * win[i]; im[i] = 0; }
+    this.fft(false);
+    let tot = 0, noiseTot = 0;
+    const Ps = this.Ps;
+    for (let k = 0; k <= K; k++) {
+      P[k] = re[k] * re[k] + im[k] * im[k];
+      Ps[k] = this.frames === 0 ? P[k] : 0.8 * Ps[k] + 0.2 * P[k];
+      tot += Ps[k]; noiseTot += noise[k];
+    }
+    const hopSec = H / this.sr;
+    const speechLike = this.frames > 15 && tot > 4 * noiseTot;
+    const rise = Math.pow(10, (speechLike ? 0.3 : 2.0) * hopSec / 10);
+    for (let k = 0; k <= K; k++) {
+      const p = Ps[k];
+      if (this.frames < 15) noise[k] = this.frames === 0 ? p : 0.7 * noise[k] + 0.3 * p;
+      else if (p < noise[k]) noise[k] = noise[k] * 0.85 + p * 0.15;
+      else noise[k] = Math.min(noise[k] * rise, p);
+      if (noise[k] < 1e-10) noise[k] = 1e-10;
+    }
+    this.frames++;
+    const s = this.strength;
+    if (s <= 0) { gs.fill(1); }
+    else {
+      const alpha = 1 + s * 0.25, gmin = Math.pow(10, -(6 + s * 2.4) / 20);
+      for (let k = 0; k <= K; k++) {
+        const ratio = alpha * 1.6 * noise[k] / (P[k] + 1e-12);
+        let gn = ratio >= 1 ? 0 : Math.sqrt(1 - ratio);
+        if (gn < gmin) gn = gmin;
+        const g = G[k];
+        G[k] = gn > g ? g + (gn - g) * 0.75 : g + (gn - g) * 0.35;
+      }
+      for (let k = 0; k <= K; k++) {
+        const a = G[k > 0 ? k - 1 : 0], c = G[k < K ? k + 1 : K];
+        gs[k] = 0.25 * a + 0.5 * G[k] + 0.25 * c;
+      }
+    }
+    for (let k = 0; k <= K; k++) { re[k] *= gs[k]; im[k] *= gs[k]; }
+    for (let k = 1; k < K; k++) { re[N - k] *= gs[k]; im[N - k] *= gs[k]; }
+    this.fft(true);
+    for (let i = 0; i < N; i++) this.acc[i] += re[i] * win[i];
+    for (let i = 0; i < H; i++) { this.q[this.qt] = this.acc[i]; this.qt = (this.qt + 1) & 4095; }
+    this.acc.copyWithin(0, H); this.acc.fill(0, H);
+    this.inBuf.copyWithin(0, H); this.inFill = H;
+  }
+  process(inp, out) {
+    for (let i = 0; i < inp.length; i++) {
+      this.inBuf[this.inFill++] = inp[i];
+      if (this.inFill === this.N) this.frame();
+      if (this.qh !== this.qt) { out[i] = this.q[this.qh]; this.qh = (this.qh + 1) & 4095; } else out[i] = 0;
+    }
+  }
+}
+if (typeof registerProcessor !== 'undefined') {
+  class NRProc extends AudioWorkletProcessor {
+    constructor() {
+      super();
+      this.core = new NRCore(sampleRate);
+      this.port.onmessage = e => { if (e.data && e.data.strength !== undefined) this.core.strength = e.data.strength; };
+    }
+    process(inputs, outputs) {
+      const o = outputs[0][0], i = inputs[0] && inputs[0][0];
+      if (!i) { o.fill(0); return true; }
+      this.core.process(i, o);
+      return true;
+    }
+  }
+  registerProcessor('eb-nr', NRProc);
+}
+if (typeof module !== 'undefined') module.exports = { NRCore };
+</script>
 <script>
 const $ = id => document.getElementById(id);
-let deafLeft = true, running = false, ctx, stream, wake, raf;
+let deafLeft = true, running = false, busy = false, needTap = false;
+let ctx, stream, wake, raf, watchTimer, nrURL;
 let n = {};
 let deafSign = 0; // +1 means the deaf side is the left mic channel, -1 the right
 try { deafSign = +localStorage.getItem('eb_sign') || 0; } catch (e) {}
+
+function setStat(t) { $('stat').textContent = t || ''; }
 
 function setSide(left) {
   deafLeft = left;
@@ -117,15 +233,17 @@ setSide(true);
 const dbToGain = db => Math.pow(10, db / 20);
 const toDb = x => 20 * Math.log10(x + 1e-9);
 function rms(b) { let s = 0; for (let i = 0; i < b.length; i++) s += b[i] * b[i]; return Math.sqrt(s / b.length); }
+function peakOf(b) { let m = 0; for (let i = 0; i < b.length; i++) { const a = Math.abs(b[i]); if (a > m) m = a; } return m; }
 
 function applyAudio() {
   $('gv').textContent = $('gain').value;
   $('nv').textContent = $('nr').value;
   if (!n.gain) return;
-  n.gain.gain.value = dbToGain(+$('gain').value);
+  const t = ctx.currentTime;
   const v = $('voice').checked;
-  n.peak.gain.value = v ? 6 : 0;
-  n.lp.frequency.value = v ? 6500 : 12000;
+  n.peak.gain.setTargetAtTime(v ? 6 : 0, t, 0.05);
+  n.lp.frequency.setTargetAtTime(v ? 6500 : 12000, t, 0.05);
+  if (n.nr && n.nr.port) n.nr.port.postMessage({ strength: +$('nr').value });
 }
 $('gain').oninput = applyAudio;
 $('nr').oninput = applyAudio;
@@ -134,7 +252,14 @@ $('voice').onchange = applyAudio;
 async function getStream(deviceId) {
   const audio = { echoCancellation: false, noiseSuppression: $('sys').checked, autoGainControl: false, channelCount: { ideal: 2 } };
   if (deviceId) audio.deviceId = { exact: deviceId };
-  return navigator.mediaDevices.getUserMedia({ audio });
+  try { return await navigator.mediaDevices.getUserMedia({ audio }); }
+  catch (e) {
+    if (deviceId && (e.name === 'OverconstrainedError' || e.name === 'NotFoundError')) {
+      delete audio.deviceId;
+      return navigator.mediaDevices.getUserMedia({ audio });
+    }
+    throw e;
+  }
 }
 
 async function fillMics() {
@@ -150,87 +275,157 @@ async function fillMics() {
   return list;
 }
 
-async function start() {
-  $('err').textContent = '';
-  if (!$('hp').checked) { $('err').textContent = 'Please confirm you are wearing earbuds first.'; return; }
-  try {
-    ctx = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: 'interactive' });
-    await ctx.resume();
-    stream = await getStream($('mic').value || null);
-    const mics = await fillMics();
-    if (!$('mic').value) {
-      const phone = mics.find(m => /iphone|built-in/i.test(m.label));
-      if (phone && stream.getAudioTracks()[0].getSettings().deviceId !== phone.deviceId) {
-        stream.getTracks().forEach(t => t.stop());
-        stream = await getStream(phone.deviceId);
-        $('mic').value = phone.deviceId;
-      }
+// Builds the whole audio chain. Used for the first start and for recovery after calls or alerts.
+async function build() {
+  ctx = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: 'interactive' });
+  await ctx.resume();
+  stream = await getStream($('mic').value || null);
+  const mics = await fillMics();
+  if (!$('mic').value) {
+    const phone = mics.find(m => /iphone|built-in/i.test(m.label));
+    if (phone && stream.getAudioTracks()[0].getSettings().deviceId !== phone.deviceId) {
+      stream.getTracks().forEach(t => t.stop());
+      stream = await getStream(phone.deviceId);
+      $('mic').value = phone.deviceId;
     }
-    const chCount = stream.getAudioTracks()[0].getSettings().channelCount;
-    const src = ctx.createMediaStreamSource(stream);
+  }
+  const track = stream.getAudioTracks()[0];
+  track.onended = () => { if (running && !busy) recover(); };
+  track.onmute = () => { if (running) setStat('Paused by a call or alert. It will resume by itself.'); };
+  track.onunmute = () => { if (running) setStat(''); };
+  ctx.onstatechange = () => {
+    if (running && ctx && ctx.state !== 'running') setStat('Paused by a call or alert. It will resume by itself.');
+  };
+  const chCount = track.getSettings().channelCount;
+  const src = ctx.createMediaStreamSource(stream);
 
-    n = {};
-    n.mono = ctx.createGain();
-    n.mono.channelCount = 1; n.mono.channelCountMode = 'explicit';
-    n.hp = ctx.createBiquadFilter(); n.hp.type = 'highpass'; n.hp.frequency.value = 120;
-    n.peak = ctx.createBiquadFilter(); n.peak.type = 'peaking'; n.peak.frequency.value = 2500; n.peak.Q.value = 1;
-    n.lp = ctx.createBiquadFilter(); n.lp.type = 'lowpass';
-    n.gate = ctx.createGain();
-    n.gain = ctx.createGain();
-    n.lim = ctx.createDynamicsCompressor();
-    n.lim.threshold.value = -6; n.lim.knee.value = 0; n.lim.ratio.value = 20;
-    n.lim.attack.value = 0.003; n.lim.release.value = 0.1;
-    n.pan = ctx.createStereoPanner();
-    n.an = ctx.createAnalyser(); n.an.fftSize = 512;
-    n.pre = ctx.createAnalyser(); n.pre.fftSize = 1024;
+  n = {};
+  n.mono = ctx.createGain();
+  n.mono.channelCount = 1; n.mono.channelCountMode = 'explicit';
+  n.hp = ctx.createBiquadFilter(); n.hp.type = 'highpass'; n.hp.frequency.value = 120;
 
-    src.connect(n.mono).connect(n.hp).connect(n.peak).connect(n.lp);
-    n.lp.connect(n.pre);
-    n.lp.connect(n.gate).connect(n.gain).connect(n.lim).connect(n.pan).connect(ctx.destination);
-    n.lim.connect(n.an);
+  // Noise suppressor (runs on the audio thread)
+  let hasNR = false;
+  try {
+    if (!nrURL) nrURL = URL.createObjectURL(new Blob([$('nr-src').textContent], { type: 'application/javascript' }));
+    await ctx.audioWorklet.addModule(nrURL);
+    n.nr = new AudioWorkletNode(ctx, 'eb-nr', {
+      numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [1],
+      channelCount: 1, channelCountMode: 'explicit'
+    });
+    hasNR = true;
+  } catch (e) {
+    n.nr = ctx.createGain();
+    $('err').textContent = 'Strong noise cleanup is not supported on this browser version. Update iOS for the best result.';
+  }
 
-    // Direction path: needs a real two-channel mic
-    n.up = ctx.createGain();
-    n.up.channelCount = 2; n.up.channelCountMode = 'explicit'; n.up.channelInterpretation = 'speakers';
-    const split = ctx.createChannelSplitter(2);
-    n.anL = ctx.createAnalyser(); n.anL.fftSize = 1024;
-    n.anR = ctx.createAnalyser(); n.anR.fftSize = 1024;
-    src.connect(n.up).connect(split);
-    split.connect(n.anL, 0); split.connect(n.anR, 1);
-    n.stereoMaybe = chCount !== 1;
-    n.loudN = 0; n.diffN = 0; n.stereoOK = null;
-    n.floor = null; n.openUntil = 0; n.last = performance.now();
-    n.loud = false; n.lastLoud = 0; n.pendingAt = 0; n.lastCue = 0; n.ild = 0;
-    n.calUntil = 0; n.calSum = 0; n.calN = 0;
+  n.peak = ctx.createBiquadFilter(); n.peak.type = 'peaking'; n.peak.frequency.value = 2500; n.peak.Q.value = 1;
+  n.lp = ctx.createBiquadFilter(); n.lp.type = 'lowpass';
+  n.pre = ctx.createAnalyser(); n.pre.fftSize = 1024;
+  n.gain = ctx.createGain(); n.gain.gain.value = dbToGain(+$('gain').value);
+  n.comp = ctx.createDynamicsCompressor();
+  n.comp.threshold.value = -24; n.comp.knee.value = 12; n.comp.ratio.value = 4;
+  n.comp.attack.value = 0.005; n.comp.release.value = 0.2;
+  n.shape = ctx.createWaveShaper();
+  const curve = new Float32Array(2049);
+  for (let i = 0; i < curve.length; i++) { const x = i / 1024 - 1; curve[i] = 1.5 * (x - x * x * x / 3); }
+  n.shape.curve = curve; n.shape.oversample = '4x';
+  n.trim = ctx.createGain(); n.trim.gain.value = 0.7;
+  n.pan = ctx.createStereoPanner();
+  n.an = ctx.createAnalyser(); n.an.fftSize = 512;
 
-    setSide(deafLeft); applyAudio();
-    running = true;
-    $('go').textContent = 'Stop listening'; $('go').classList.add('run');
+  src.connect(n.mono).connect(n.hp).connect(n.nr).connect(n.peak).connect(n.lp);
+  n.lp.connect(n.pre);
+  n.lp.connect(n.gain).connect(n.comp).connect(n.shape).connect(n.trim).connect(n.pan).connect(ctx.destination);
+  n.trim.connect(n.an);
+
+  // Direction path: needs a real two-channel mic
+  n.up = ctx.createGain();
+  n.up.channelCount = 2; n.up.channelCountMode = 'explicit'; n.up.channelInterpretation = 'speakers';
+  const split = ctx.createChannelSplitter(2);
+  n.anL = ctx.createAnalyser(); n.anL.fftSize = 1024;
+  n.anR = ctx.createAnalyser(); n.anR.fftSize = 1024;
+  src.connect(n.up).connect(split);
+  split.connect(n.anL, 0); split.connect(n.anR, 1);
+  n.stereoMaybe = chCount !== 1;
+  n.loudN = 0; n.diffN = 0; n.stereoOK = null;
+  n.floor = null; n.last = performance.now();
+  n.loud = false; n.lastLoud = 0; n.pendingAt = 0; n.lastCue = 0; n.ild = 0;
+  n.calUntil = 0; n.calSum = 0; n.calN = 0;
+  n.duck = 1; n.hot = 0; n.duckMsgUntil = 0;
+
+  setSide(deafLeft); applyAudio();
+  updateDStat();
+  loop();
+}
+
+function teardown() {
+  cancelAnimationFrame(raf);
+  try { if (stream) stream.getTracks().forEach(t => { t.onended = null; t.stop(); }); } catch (e) {}
+  try { if (ctx) { ctx.onstatechange = null; ctx.close(); } } catch (e) {}
+  n = {};
+}
+
+async function start() {
+  $('err').textContent = ''; setStat('');
+  if (!$('hp').checked) { $('err').textContent = 'Please confirm you are wearing earbuds first.'; return; }
+  busy = true;
+  try {
+    await build();
+    running = true; needTap = false;
+    $('go').textContent = 'Stop listening'; $('go').className = 'run';
     try { wake = await navigator.wakeLock.request('screen'); } catch (e) {}
-    updateDStat();
-    loop();
+    clearInterval(watchTimer); watchTimer = setInterval(watch, 800);
   } catch (e) {
     $('err').textContent = 'Could not start: ' + (e.message || e.name) + '. Allow microphone access for this site.';
-    stop();
+    teardown();
   }
+  busy = false;
 }
 
 function stop() {
-  running = false;
-  cancelAnimationFrame(raf);
-  if (stream) stream.getTracks().forEach(t => t.stop());
-  if (ctx) ctx.close();
-  if (wake) { wake.release(); wake = null; }
-  n = {};
-  $('lvl').style.width = '0';
-  $('go').textContent = 'Start listening'; $('go').classList.remove('run');
+  running = false; needTap = false;
+  clearInterval(watchTimer);
+  teardown();
+  if (wake) { try { wake.release(); } catch (e) {} wake = null; }
+  $('lvl').style.width = '0'; setStat('');
+  $('go').textContent = 'Start listening'; $('go').className = '';
+}
+
+// After a call, alert or route change: rebuild everything without losing the running state.
+async function recover() {
+  if (busy || !running) return;
+  busy = true;
+  setStat('Reconnecting...');
+  teardown();
+  try {
+    await build();
+    needTap = false; setStat('');
+    $('go').textContent = 'Stop listening'; $('go').className = 'run';
+    try { if (!wake) wake = await navigator.wakeLock.request('screen'); } catch (e) {}
+  } catch (e) {
+    needTap = true;
+    setStat('EarBridge was paused. Tap the orange button to continue.');
+    $('go').textContent = 'Tap to resume'; $('go').className = 'tap';
+  }
+  busy = false;
+}
+
+// Runs every 0.8 s: keeps the audio alive after calls and notification sounds.
+async function watch() {
+  if (!running || busy || needTap) return;
+  const tr = stream && stream.getAudioTracks()[0];
+  if (!tr || tr.readyState === 'ended' || !ctx || ctx.state === 'closed') return recover();
+  if (ctx.state !== 'running') { try { await ctx.resume(); } catch (e) {} }
+  if (ctx.state === 'running' && !tr.muted) { if ($('stat').textContent.indexOf('Paused') === 0) setStat(''); }
+  else setStat('Paused by a call or alert. It will resume by itself.');
 }
 
 function updateDStat(msg) {
   let t = msg;
   if (!t) {
-    if (!running) t = 'Start listening, then tap Calibrate and clap or talk on your deaf side.';
-    else if (!n.stereoMaybe || n.stereoOK === false) t = 'This phone and browser give only one mic channel, so direction is not available here. The native iOS app can do it.';
+    if (!running && !n.pan) t = 'Start listening, then tap Calibrate and clap or talk on your deaf side.';
+    else if (!n.stereoMaybe || n.stereoOK === false) t = 'This phone and browser give only one mic channel, so direction is not available here.';
     else if (!deafSign) t = 'Not calibrated yet. Tap Calibrate, then clap or talk on your deaf side for 4 seconds.';
     else t = 'Calibrated and ready.';
   }
@@ -257,48 +452,43 @@ function cue() {
 $('test').onclick = cue;
 
 $('cal').onclick = () => {
-  if (!running) { updateDStat('Start listening first, then calibrate.'); return; }
+  if (!running || !n.pan) { updateDStat('Start listening first, then calibrate.'); return; }
   if (!n.stereoMaybe) { updateDStat(); return; }
   n.calUntil = performance.now() + 4000; n.calSum = 0; n.calN = 0;
   updateDStat('Now clap or talk on your deaf side for 4 seconds...');
 };
 
 function loop() {
-  if (!running) return;
+  if (!n.an) return;
   const now = performance.now();
   const dt = Math.min(0.1, (now - n.last) / 1000); n.last = now;
 
+  // Output meter and overload guard (stops squealing and harsh distortion at high boost)
   const bA = new Float32Array(n.an.fftSize); n.an.getFloatTimeDomainData(bA);
-  $('lvl').style.width = Math.min(100, rms(bA) * 400) + '%';
+  $('lvl').style.width = Math.min(100, rms(bA) * 500) + '%';
+  if (peakOf(bA) > 0.6) n.hot += dt; else n.hot = Math.max(0, n.hot - dt * 2);
+  if (n.hot > 0.7) {
+    n.duck = Math.max(0.25, n.duck * 0.6); n.hot = 0; n.duckMsgUntil = now + 3000;
+    setStat('Volume lowered automatically to stop squealing or harsh sound.');
+  } else n.duck = Math.min(1, n.duck + dt * 0.05);
+  if (n.duckMsgUntil && now > n.duckMsgUntil) { n.duckMsgUntil = 0; if ($('stat').textContent.indexOf('Volume lowered') === 0) setStat(''); }
+  n.gain.gain.setTargetAtTime(dbToGain(+$('gain').value) * n.duck, ctx.currentTime, 0.05);
 
+  // Level after noise cleanup, used to spot new sounds
   const bP = new Float32Array(n.pre.fftSize); n.pre.getFloatTimeDomainData(bP);
   const db = toDb(rms(bP));
-
-  // Learn the noise floor: drops fast, rises slowly
   if (n.floor === null) n.floor = db;
-  const s = +$('nr').value;
-  const margin = 3 + s;
-  const open = now < n.openUntil;
+  const above = db > n.floor + 6;
   if (db < n.floor) n.floor += (db - n.floor) * 0.2;
-  else n.floor += (open ? 0.05 : 0.5) * dt;
-  n.floor = Math.max(-85, Math.min(-35, n.floor));
-  const above = db > n.floor + margin;
-  if (above) n.openUntil = now + 250;
-
-  if (s === 0 || now - (n.t0 || (n.t0 = now)) < 800) {
-    n.gate.gain.setTargetAtTime(1, ctx.currentTime, 0.02);
-  } else {
-    const closed = dbToGain(-(6 + s * 3));
-    const isOpen = now < n.openUntil;
-    n.gate.gain.setTargetAtTime(isOpen ? 1 : closed, ctx.currentTime, isOpen ? 0.01 : 0.12);
-  }
+  else n.floor += (above ? 0.05 : 0.5) * dt;
+  n.floor = Math.max(-100, Math.min(-35, n.floor));
 
   // Direction
   if (n.stereoMaybe && n.stereoOK !== false) {
     const bL = new Float32Array(n.anL.fftSize), bR = new Float32Array(n.anR.fftSize);
     n.anL.getFloatTimeDomainData(bL); n.anR.getFloatTimeDomainData(bR);
     const l = rms(bL), r = rms(bR);
-    const loudEnough = db > -50;
+    const loudEnough = toDb(Math.max(l, r)) > -50;
     if (loudEnough) {
       const ild = 20 * Math.log10((l + 1e-7) / (r + 1e-7));
       n.ild = n.ild * 0.6 + ild * 0.4;
@@ -321,10 +511,8 @@ function loop() {
         updateDStat('Calibrated and ready. Keep the phone held the same way as you did just now.');
       }
     }
-    const loudNow = db > n.floor + 8 && db > -55;
-    if (loudNow && !n.loud) {
-      if (now - n.lastLoud > 400) n.pendingAt = now + 80;
-    }
+    const loudNow = loudEnough && db > n.floor + 8;
+    if (loudNow && !n.loud && now - n.lastLoud > 400) n.pendingAt = now + 80;
     if (loudNow) n.lastLoud = now;
     n.loud = loudNow;
     if (n.pendingAt && now >= n.pendingAt) {
@@ -338,11 +526,16 @@ function loop() {
   raf = requestAnimationFrame(loop);
 }
 
-$('go').onclick = () => running ? stop() : start();
+$('go').onclick = async () => {
+  if (needTap) { needTap = false; return recover(); }
+  if (running) stop(); else start();
+};
 document.addEventListener('visibilitychange', async () => {
-  if (running && ctx && ctx.state !== 'running') { try { await ctx.resume(); } catch (e) {} }
-  if (running && document.visibilityState === 'visible' && !wake) {
-    try { wake = await navigator.wakeLock.request('screen'); } catch (e) {}
+  if (!running || needTap) return;
+  if (document.visibilityState === 'visible') {
+    if (!wake) { try { wake = await navigator.wakeLock.request('screen'); } catch (e) {} }
+    if (ctx && ctx.state !== 'running') { try { await ctx.resume(); } catch (e) {} }
+    watch();
   }
 });
 </script>
