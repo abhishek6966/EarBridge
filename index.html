@@ -15,10 +15,12 @@
   h1 { margin: 8px 0 0; font-size: 32px; }
   .mut { color: var(--mut); font-size: 14px; }
   .seg { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  button { font: inherit; }
   .seg button { padding: 14px; border-radius: 12px; border: 2px solid transparent; background: var(--card); color: var(--fg); font-size: 17px; }
   .seg button.on { border-color: var(--acc); font-weight: 600; }
   #go { padding: 20px; border: 0; border-radius: 16px; background: var(--acc); color: #fff; font-size: 20px; font-weight: 700; }
   #go.run { background: var(--stop); }
+  .small { padding: 12px; border-radius: 10px; border: 0; background: var(--card); color: var(--fg); }
   .bar { height: 10px; background: var(--card); border-radius: 6px; overflow: hidden; }
   #lvl { height: 100%; width: 0; background: #22c55e; }
   input[type=range] { width: 100%; }
@@ -26,9 +28,18 @@
   select { width: 100%; padding: 10px; border-radius: 10px; font-size: 16px; }
   .card { background: var(--card); padding: 14px; border-radius: 12px; }
   #err { color: var(--stop); font-size: 14px; }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  #flash { position: fixed; inset: 0; pointer-events: none; opacity: 0; transition: opacity .5s;
+           display: flex; align-items: center; justify-content: center; font-size: 22px; font-weight: 700; color: #fff; text-align: center; padding: 30px; }
+  #flash.l { background: linear-gradient(90deg, rgba(10,99,255,.85), rgba(10,99,255,0) 70%); justify-content: flex-start; }
+  #flash.r { background: linear-gradient(270deg, rgba(10,99,255,.85), rgba(10,99,255,0) 70%); justify-content: flex-end; }
+  #flash.show { opacity: 1; transition: none; }
+  .hidden { position: absolute; opacity: 0; pointer-events: none; width: 1px; height: 1px; }
 </style>
 </head>
 <body>
+<div id="flash"></div>
+<label class="hidden"><input type="checkbox" switch id="hs"></label>
 <main>
   <h1>EarBridge</h1>
   <div class="mut">Hear your surroundings in your good ear.</div>
@@ -54,6 +65,24 @@
     <label class="row"><input type="checkbox" id="voice" checked> Voice focus (clearer speech)</label>
   </section>
 
+  <section class="card">
+    <b>Noise cleanup: <span id="nv">5</span> / 10</b>
+    <input type="range" id="nr" min="0" max="10" step="1" value="5">
+    <div class="mut">Learns the steady background noise and quiets it between sounds. Higher means stronger. 0 turns it off.</div>
+    <label class="row" style="margin-top:8px"><input type="checkbox" id="sys"> Also try the iPhone's own noise filter (restart to apply, may lower quality)</label>
+  </section>
+
+  <section class="card">
+    <b>Deaf-side alert (experimental)</b>
+    <label class="row" style="margin-top:6px"><input type="checkbox" id="dir"> Alert me when a new sound starts on my deaf side</label>
+    <label class="row"><input type="checkbox" id="tick" checked> Soft tick in my good ear</label>
+    <div class="two" style="margin-top:10px">
+      <button class="small" id="cal">Calibrate</button>
+      <button class="small" id="test">Test alert</button>
+    </div>
+    <div class="mut" id="dstat" style="margin-top:8px">Start listening, then tap Calibrate and clap or talk on your deaf side.</div>
+  </section>
+
   <section>
     <b>Microphone</b>
     <select id="mic"><option value="">Default (start once to list)</option></select>
@@ -62,7 +91,7 @@
 
   <div class="card mut">
     Keep this screen open while listening. Put the phone mic toward the people you want to hear.
-    For music, calls and videos: Settings &gt; Accessibility &gt; Audio &amp; Visual, turn on Mono Audio and slide Balance to your good ear.
+    For music, calls and videos: Settings > Accessibility > Audio &amp; Visual, turn on Mono Audio and slide Balance to your good ear.
     Start with low volume and raise it slowly.
   </div>
 </main>
@@ -71,6 +100,8 @@
 const $ = id => document.getElementById(id);
 let deafLeft = true, running = false, ctx, stream, wake, raf;
 let n = {};
+let deafSign = 0; // +1 means the deaf side is the left mic channel, -1 the right
+try { deafSign = +localStorage.getItem('eb_sign') || 0; } catch (e) {}
 
 function setSide(left) {
   deafLeft = left;
@@ -83,21 +114,25 @@ $('bl').onclick = () => setSide(true);
 $('br').onclick = () => setSide(false);
 setSide(true);
 
-function dbToGain(db) { return Math.pow(10, db / 20); }
+const dbToGain = db => Math.pow(10, db / 20);
+const toDb = x => 20 * Math.log10(x + 1e-9);
+function rms(b) { let s = 0; for (let i = 0; i < b.length; i++) s += b[i] * b[i]; return Math.sqrt(s / b.length); }
+
 function applyAudio() {
+  $('gv').textContent = $('gain').value;
+  $('nv').textContent = $('nr').value;
   if (!n.gain) return;
-  const db = +$('gain').value;
-  $('gv').textContent = db;
-  n.gain.gain.value = dbToGain(db);
+  n.gain.gain.value = dbToGain(+$('gain').value);
   const v = $('voice').checked;
   n.peak.gain.value = v ? 6 : 0;
   n.lp.frequency.value = v ? 6500 : 12000;
 }
 $('gain').oninput = applyAudio;
+$('nr').oninput = applyAudio;
 $('voice').onchange = applyAudio;
 
 async function getStream(deviceId) {
-  const audio = { echoCancellation: false, noiseSuppression: false, autoGainControl: false, channelCount: 1 };
+  const audio = { echoCancellation: false, noiseSuppression: $('sys').checked, autoGainControl: false, channelCount: { ideal: 2 } };
   if (deviceId) audio.deviceId = { exact: deviceId };
   return navigator.mediaDevices.getUserMedia({ audio });
 }
@@ -131,26 +166,49 @@ async function start() {
         $('mic').value = phone.deviceId;
       }
     }
+    const chCount = stream.getAudioTracks()[0].getSettings().channelCount;
     const src = ctx.createMediaStreamSource(stream);
+
+    n = {};
     n.mono = ctx.createGain();
     n.mono.channelCount = 1; n.mono.channelCountMode = 'explicit';
     n.hp = ctx.createBiquadFilter(); n.hp.type = 'highpass'; n.hp.frequency.value = 120;
     n.peak = ctx.createBiquadFilter(); n.peak.type = 'peaking'; n.peak.frequency.value = 2500; n.peak.Q.value = 1;
     n.lp = ctx.createBiquadFilter(); n.lp.type = 'lowpass';
+    n.gate = ctx.createGain();
     n.gain = ctx.createGain();
     n.lim = ctx.createDynamicsCompressor();
     n.lim.threshold.value = -6; n.lim.knee.value = 0; n.lim.ratio.value = 20;
     n.lim.attack.value = 0.003; n.lim.release.value = 0.1;
     n.pan = ctx.createStereoPanner();
     n.an = ctx.createAnalyser(); n.an.fftSize = 512;
-    src.connect(n.mono).connect(n.hp).connect(n.peak).connect(n.lp).connect(n.gain)
-       .connect(n.lim).connect(n.pan).connect(ctx.destination);
+    n.pre = ctx.createAnalyser(); n.pre.fftSize = 1024;
+
+    src.connect(n.mono).connect(n.hp).connect(n.peak).connect(n.lp);
+    n.lp.connect(n.pre);
+    n.lp.connect(n.gate).connect(n.gain).connect(n.lim).connect(n.pan).connect(ctx.destination);
     n.lim.connect(n.an);
+
+    // Direction path: needs a real two-channel mic
+    n.up = ctx.createGain();
+    n.up.channelCount = 2; n.up.channelCountMode = 'explicit'; n.up.channelInterpretation = 'speakers';
+    const split = ctx.createChannelSplitter(2);
+    n.anL = ctx.createAnalyser(); n.anL.fftSize = 1024;
+    n.anR = ctx.createAnalyser(); n.anR.fftSize = 1024;
+    src.connect(n.up).connect(split);
+    split.connect(n.anL, 0); split.connect(n.anR, 1);
+    n.stereoMaybe = chCount !== 1;
+    n.loudN = 0; n.diffN = 0; n.stereoOK = null;
+    n.floor = null; n.openUntil = 0; n.last = performance.now();
+    n.loud = false; n.lastLoud = 0; n.pendingAt = 0; n.lastCue = 0; n.ild = 0;
+    n.calUntil = 0; n.calSum = 0; n.calN = 0;
+
     setSide(deafLeft); applyAudio();
     running = true;
     $('go').textContent = 'Stop listening'; $('go').classList.add('run');
     try { wake = await navigator.wakeLock.request('screen'); } catch (e) {}
-    meter();
+    updateDStat();
+    loop();
   } catch (e) {
     $('err').textContent = 'Could not start: ' + (e.message || e.name) + '. Allow microphone access for this site.';
     stop();
@@ -168,15 +226,116 @@ function stop() {
   $('go').textContent = 'Start listening'; $('go').classList.remove('run');
 }
 
-function meter() {
-  const buf = new Float32Array(n.an.fftSize);
-  (function loop() {
-    if (!running) return;
-    n.an.getFloatTimeDomainData(buf);
-    let s = 0; for (const x of buf) s += x * x;
-    $('lvl').style.width = Math.min(100, Math.sqrt(s / buf.length) * 400) + '%';
-    raf = requestAnimationFrame(loop);
-  })();
+function updateDStat(msg) {
+  let t = msg;
+  if (!t) {
+    if (!running) t = 'Start listening, then tap Calibrate and clap or talk on your deaf side.';
+    else if (!n.stereoMaybe || n.stereoOK === false) t = 'This phone and browser give only one mic channel, so direction is not available here. The native iOS app can do it.';
+    else if (!deafSign) t = 'Not calibrated yet. Tap Calibrate, then clap or talk on your deaf side for 4 seconds.';
+    else t = 'Calibrated and ready.';
+  }
+  $('dstat').textContent = t;
+}
+
+function cue() {
+  const f = $('flash');
+  f.textContent = 'Sound on your deaf side';
+  f.className = (deafLeft ? 'l' : 'r') + ' show';
+  setTimeout(() => f.classList.remove('show'), 900);
+  try { if (navigator.vibrate) navigator.vibrate([60, 40, 60]); } catch (e) {}
+  try { $('hs').click(); } catch (e) {}
+  if ($('tick').checked && ctx && n.pan) {
+    const o = ctx.createOscillator(), g = ctx.createGain();
+    o.frequency.value = 1800; g.gain.value = 0.0001;
+    o.connect(g).connect(n.pan);
+    const t = ctx.currentTime;
+    g.gain.exponentialRampToValueAtTime(0.2, t + 0.01);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.12);
+    o.start(t); o.stop(t + 0.15);
+  }
+}
+$('test').onclick = cue;
+
+$('cal').onclick = () => {
+  if (!running) { updateDStat('Start listening first, then calibrate.'); return; }
+  if (!n.stereoMaybe) { updateDStat(); return; }
+  n.calUntil = performance.now() + 4000; n.calSum = 0; n.calN = 0;
+  updateDStat('Now clap or talk on your deaf side for 4 seconds...');
+};
+
+function loop() {
+  if (!running) return;
+  const now = performance.now();
+  const dt = Math.min(0.1, (now - n.last) / 1000); n.last = now;
+
+  const bA = new Float32Array(n.an.fftSize); n.an.getFloatTimeDomainData(bA);
+  $('lvl').style.width = Math.min(100, rms(bA) * 400) + '%';
+
+  const bP = new Float32Array(n.pre.fftSize); n.pre.getFloatTimeDomainData(bP);
+  const db = toDb(rms(bP));
+
+  // Learn the noise floor: drops fast, rises slowly
+  if (n.floor === null) n.floor = db;
+  const s = +$('nr').value;
+  const margin = 3 + s;
+  const open = now < n.openUntil;
+  if (db < n.floor) n.floor += (db - n.floor) * 0.2;
+  else n.floor += (open ? 0.05 : 0.5) * dt;
+  n.floor = Math.max(-85, Math.min(-35, n.floor));
+  const above = db > n.floor + margin;
+  if (above) n.openUntil = now + 250;
+
+  if (s === 0 || now - (n.t0 || (n.t0 = now)) < 800) {
+    n.gate.gain.setTargetAtTime(1, ctx.currentTime, 0.02);
+  } else {
+    const closed = dbToGain(-(6 + s * 3));
+    const isOpen = now < n.openUntil;
+    n.gate.gain.setTargetAtTime(isOpen ? 1 : closed, ctx.currentTime, isOpen ? 0.01 : 0.12);
+  }
+
+  // Direction
+  if (n.stereoMaybe && n.stereoOK !== false) {
+    const bL = new Float32Array(n.anL.fftSize), bR = new Float32Array(n.anR.fftSize);
+    n.anL.getFloatTimeDomainData(bL); n.anR.getFloatTimeDomainData(bR);
+    const l = rms(bL), r = rms(bR);
+    const loudEnough = db > -50;
+    if (loudEnough) {
+      const ild = 20 * Math.log10((l + 1e-7) / (r + 1e-7));
+      n.ild = n.ild * 0.6 + ild * 0.4;
+      n.loudN++; if (Math.abs(ild) > 0.5) n.diffN++;
+      if (n.loudN === 150) {
+        n.stereoOK = (n.diffN / n.loudN) > 0.1;
+        if (!n.stereoOK) updateDStat();
+      }
+    }
+    if (now < n.calUntil) {
+      if (loudEnough) { n.calSum += n.ild; n.calN++; }
+    } else if (n.calUntil) {
+      n.calUntil = 0;
+      const mean = n.calN ? n.calSum / n.calN : 0;
+      if (n.calN < 20) updateDStat('Not enough sound heard. Try again, a bit louder or closer.');
+      else if (Math.abs(mean) < 1.5) updateDStat('Could not tell the sides apart. Try clapping right next to the phone edge on your deaf side.');
+      else {
+        deafSign = mean > 0 ? 1 : -1;
+        try { localStorage.setItem('eb_sign', String(deafSign)); } catch (e) {}
+        updateDStat('Calibrated and ready. Keep the phone held the same way as you did just now.');
+      }
+    }
+    const loudNow = db > n.floor + 8 && db > -55;
+    if (loudNow && !n.loud) {
+      if (now - n.lastLoud > 400) n.pendingAt = now + 80;
+    }
+    if (loudNow) n.lastLoud = now;
+    n.loud = loudNow;
+    if (n.pendingAt && now >= n.pendingAt) {
+      n.pendingAt = 0;
+      if ($('dir').checked && deafSign && n.stereoOK !== false && loudNow &&
+          deafSign * n.ild > 2.5 && now - n.lastCue > 1200) {
+        n.lastCue = now; cue();
+      }
+    }
+  }
+  raf = requestAnimationFrame(loop);
 }
 
 $('go').onclick = () => running ? stop() : start();
